@@ -1,0 +1,13 @@
+services:
+  mailbeacon:
+    image: ghcr.io/nerdy-technician/mailbeacon:latest
+    # Uncomment to build from this checkout instead of pulling the published image:
+    # build: .
+    container_name: mailbeacon
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "2525:2525"   # SMTP
+      - "8080:8080"   # Web UI
+    volumes:
+      - ./data:/data

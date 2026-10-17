@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MailBeacon</title>
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/site.webmanifest">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header><a class="brand" href="/"><img src="/logo.svg" alt="" width="44" height="44"><h1>Mail<span>Beacon</span></h1></a>
+    <nav id="nav" hidden>
+      <button data-tab="routes">Routes</button><button data-tab="messages">Messages</button>
+      <button data-tab="settings">Settings</button><button data-tab="logs">Logs</button>
+      <button id="logout">Log out</button>
+    </nav>
+  </header>
+  <main>
+    <section id="auth" hidden>
+      <h2 id="authTitle">Log in</h2>
+      <form id="authForm"><input type="password" id="authPw" placeholder="Admin password" required autocomplete="current-password"><button>Continue</button></form>
+      <p id="ssoWrap" hidden><a id="ssoBtn" class="button" href="/api/oidc/login">Log in with single sign-on</a></p>
+      <p id="authMsg" class="muted"></p>
+    </section>
+
+    <section id="routes" class="tab" hidden>
+      <div id="routeListView">
+        <div class="section-head">
+          <h2>Routes</h2>
+          <button type="button" id="addRoute" class="primary">+ Add route</button>
+        </div>
+        <p class="lead">Each incoming email is checked against these routes <strong>from top to bottom</strong>. The <strong>first enabled route that matches wins</strong> and later routes are skipped. Mail that matches nothing is rejected, so MailBeacon can never be used as an open relay.</p>
+
+        <div id="routeEmpty" class="empty" hidden>
+          <h3>No routes yet, so all mail is being rejected</h3>
+          <ol class="how">
+            <li><span class="step">1</span><div><strong>An app sends an email</strong> to MailBeacon on its SMTP port, e.g. Proxmox sending to <code>proxmox@alerts.local</code>.</div></li>
+            <li><span class="step">2</span><div><strong>A route matches it</strong> by recipient, sender or subject, or a catch-all takes everything.</div></li>
+            <li><span class="step">3</span><div><strong>You get a notification</strong> on Gotify, ntfy, Pushover or Apprise. The subject becomes the title and the body becomes the message.</div></li>
+          </ol>
+          <button type="button" id="addFirstRoute" class="primary">Add your first route</button>
+        </div>
+
+        <ol id="routeList" class="route-list" aria-label="Routes, in the order they are checked"></ol>
+      </div>
+
+      <div id="routeEditor" hidden>
+        <div class="section-head">
+          <h2 id="routeFormTitle" tabindex="-1">Add route</h2>
+          <button type="button" id="routeBack" class="ghost">← Back to routes</button>
+        </div>
+        <form id="routeForm" novalidate>
+          <input type="hidden" name="id">
+          <input type="hidden" name="order">
+          <div id="formError" class="form-error" role="alert" hidden></div>
+
+          <fieldset class="step-card">
+            <legend><span class="step">1</span> Name</legend>
+            <div class="field">
+              <label for="f-name">Route name</label>
+              <input id="f-name" name="name" autocomplete="off" placeholder="e.g. Proxmox alerts" aria-describedby="f-name-help f-name-err">
+              <p class="help" id="f-name-help">Only you see this. It shows in the route list and in test notifications.</p>
+              <p class="field-error" id="f-name-err" hidden></p>
+            </div>
+            <label class="check"><input type="checkbox" name="enabled" checked> Enabled</label>
+          </fieldset>
+
+          <fieldset class="step-card">
+            <legend><span class="step">2</span> Match when…</legend>
+            <div class="field">
+              <label for="f-matchType">Match on</label>
+              <select id="f-matchType" name="matchType">
+                <option value="recipient">Recipient address is…</option>
+                <option value="sender">Sender address matches…</option>
+                <option value="subject">Subject matches…</option>
+                <option value="catchall">Catch-all (everything)</option>
+              </select>
+            </div>
+            <div id="patternWrap">
+              <div class="field">
+                <label for="f-pattern"><span id="patternLabel">Recipient address</span> <span class="chip" id="patternKind">Exact address or *@domain</span></label>
+                <input id="f-pattern" name="pattern" autocomplete="off" spellcheck="false" class="mono" aria-describedby="patternHelp f-pattern-err">
+                <p class="help" id="patternHelp"></p>
+                <p class="field-error" id="f-pattern-err" hidden></p>
+                <div class="examples" id="patternExamples" aria-label="Examples, click to use"></div>
+              </div>
+              <div class="tester">
+                <label for="f-sample" id="sampleLabel">Test this pattern with an address</label>
+                <div class="tester-row">
+                  <input id="f-sample" autocomplete="off" spellcheck="false" class="mono" aria-describedby="sampleResult">
+                  <output id="sampleResult" class="result" aria-live="polite"></output>
+                </div>
+              </div>
+            </div>
+            <p class="help callout" id="catchallHelp" hidden>Catches <strong>every message</strong> that no route above it matched, sent to any address. Keep it at the <strong>bottom</strong> of the list: routes below a catch-all are never reached.</p>
+          </fieldset>
+
+          <fieldset class="step-card">
+            <legend><span class="step">3</span> Send to…</legend>
+            <div class="target-picker" role="radiogroup" aria-label="Notification service">
+              <label class="target-opt"><input type="radio" name="targetType" value="gotify" checked><span><b class="ticon t-gotify" aria-hidden="true">G</b><strong>Gotify</strong><small>Self-hosted push</small></span></label>
+              <label class="target-opt"><input type="radio" name="targetType" value="ntfy"><span><b class="ticon t-ntfy" aria-hidden="true">n</b><strong>ntfy</strong><small>Topic-based push</small></span></label>
+              <label class="target-opt"><input type="radio" name="targetType" value="pushover"><span><b class="ticon t-pushover" aria-hidden="true">P</b><strong>Pushover</strong><small>Hosted push app</small></span></label>
+              <label class="target-opt"><input type="radio" name="targetType" value="apprise"><span><b class="ticon t-apprise" aria-hidden="true">A</b><strong>Apprise</strong><small>Telegram, Discord, Slack…</small></span></label>
+            </div>
+
+            <div class="target-fields" data-t="gotify">
+              <div class="field">
+                <label for="f-gotifyToken">Gotify app token</label>
+                <input id="f-gotifyToken" name="gotifyToken" type="password" autocomplete="new-password" aria-describedby="f-gotifyToken-help f-gotifyToken-err">
+                <p class="help" id="f-gotifyToken-help">In Gotify, open <em>Apps</em>, create an app (e.g. "Proxmox") and copy its token.</p>
+                <p class="field-error" id="f-gotifyToken-err" hidden></p>
+              </div>
+              <div class="field">
+                <label for="f-gotifyUrl">Gotify server URL <span class="opt">optional</span></label>
+                <input id="f-gotifyUrl" name="gotifyUrl" inputmode="url" placeholder="https://gotify.example.com" aria-describedby="f-gotifyUrl-help f-gotifyUrl-err">
+                <p class="help" id="f-gotifyUrl-help">Leave blank to use the Gotify URL from Settings.</p>
+                <p class="field-error" id="f-gotifyUrl-err" hidden></p>
+              </div>
+            </div>
+
+            <div class="target-fields" data-t="ntfy">
+              <div class="field">
+                <label for="f-ntfyUrl">ntfy server URL</label>
+                <input id="f-ntfyUrl" name="ntfyUrl" inputmode="url" placeholder="https://ntfy.sh" aria-describedby="f-ntfyUrl-help f-ntfyUrl-err">
+                <p class="help" id="f-ntfyUrl-help">Your own ntfy server, or https://ntfy.sh.</p>
+                <p class="field-error" id="f-ntfyUrl-err" hidden></p>
+              </div>
+              <div class="field">
+                <label for="f-ntfyTopic">Topic</label>
+                <input id="f-ntfyTopic" name="ntfyTopic" class="mono" placeholder="homelab-alerts" aria-describedby="f-ntfyTopic-help f-ntfyTopic-err">
+                <p class="help" id="f-ntfyTopic-help">The topic you subscribed to in the ntfy app. Letters, digits, - and _ only.</p>
+                <p class="field-error" id="f-ntfyTopic-err" hidden></p>
+              </div>
+              <details class="sub">
+                <summary>Authentication <span class="opt">optional</span></summary>
+                <p class="help">Use an access token <em>or</em> a username and password, not both.</p>
+                <div class="field">
+                  <label for="f-ntfyToken">Access token</label>
+                  <input id="f-ntfyToken" name="ntfyToken" type="password" autocomplete="new-password" aria-describedby="f-ntfyToken-err">
+                  <p class="field-error" id="f-ntfyToken-err" hidden></p>
+                </div>
+                <div class="field-row">
+                  <div class="field"><label for="f-ntfyUsername">Username</label><input id="f-ntfyUsername" name="ntfyUsername" autocomplete="off"></div>
+                  <div class="field"><label for="f-ntfyPassword">Password</label><input id="f-ntfyPassword" name="ntfyPassword" type="password" autocomplete="new-password"></div>
+                </div>
+              </details>
+              <label class="check"><input type="checkbox" name="ntfyMarkdown" checked> Show HTML emails as formatted Markdown</label>
+            </div>
+
+            <div class="target-fields" data-t="pushover">
+              <div class="field">
+                <label for="f-pushoverToken">Application API token</label>
+                <input id="f-pushoverToken" name="pushoverToken" type="password" autocomplete="new-password" aria-describedby="f-pushoverToken-help f-pushoverToken-err">
+                <p class="help" id="f-pushoverToken-help">Create an application at pushover.net/apps and copy its API token.</p>
+                <p class="field-error" id="f-pushoverToken-err" hidden></p>
+              </div>
+              <div class="field">
+                <label for="f-pushoverUser">User or group key</label>
+                <input id="f-pushoverUser" name="pushoverUser" type="password" autocomplete="new-password" aria-describedby="f-pushoverUser-help f-pushoverUser-err">
+                <p class="help" id="f-pushoverUser-help">Shown on your Pushover dashboard after you log in.</p>
+                <p class="field-error" id="f-pushoverUser-err" hidden></p>
+              </div>
+              <label class="check"><input type="checkbox" name="pushoverHtml" checked> Keep basic formatting (bold, links)</label>
+            </div>
+
+            <div class="target-fields" data-t="apprise">
+              <div class="field">
+                <label for="f-appriseUrl">Apprise API URL</label>
+                <input id="f-appriseUrl" name="appriseUrl" inputmode="url" placeholder="http://apprise:8000" aria-describedby="f-appriseUrl-help f-appriseUrl-err">
+                <p class="help" id="f-appriseUrl-help">The address of your apprise-api container.</p>
+                <p class="field-error" id="f-appriseUrl-err" hidden></p>
+              </div>
+              <div class="seg" role="radiogroup" aria-label="How Apprise should notify">
+                <label><input type="radio" name="appriseMode" value="urls" checked> Notification URLs</label>
+                <label><input type="radio" name="appriseMode" value="key"> Saved config key</label>
+              </div>
+              <div class="field" data-am="urls">
+                <label for="f-appriseUrls">Notification URLs</label>
+                <input id="f-appriseUrls" name="appriseUrls" type="password" autocomplete="new-password" class="mono" aria-describedby="f-appriseUrls-help f-appriseUrls-err">
+                <p class="help" id="f-appriseUrls-help">One or more Apprise URLs, separated by spaces or commas, e.g. <code>tgram://bottoken/chatid</code>. Stored encrypted because they contain credentials.</p>
+                <p class="field-error" id="f-appriseUrls-err" hidden></p>
+              </div>
+              <div class="field" data-am="key">
+                <label for="f-appriseConfigKey">Config key</label>
+                <input id="f-appriseConfigKey" name="appriseConfigKey" class="mono" placeholder="homelab" aria-describedby="f-appriseConfigKey-help f-appriseConfigKey-err">
+                <p class="help" id="f-appriseConfigKey-help">A configuration you've already saved in Apprise. Letters, digits, - and _ only.</p>
+                <p class="field-error" id="f-appriseConfigKey-err" hidden></p>
+              </div>
+            </div>
+
+            <div class="field" id="priorityWrap">
+              <label for="f-priority">Priority</label>
+              <select id="f-priority" name="priority" aria-describedby="priorityHelp"></select>
+              <p class="help" id="priorityHelp"></p>
+            </div>
+          </fieldset>
+
+          <section class="step-card preview-card" aria-labelledby="previewTitle">
+            <h3 id="previewTitle">Preview</h3>
+            <p class="help">The email subject becomes the title and the body becomes the message. HTML emails are converted to Markdown.</p>
+            <div class="notif" id="preview" aria-hidden="true">
+              <b class="ticon" id="pvIcon">G</b>
+              <div class="notif-body">
+                <div class="notif-top"><span id="pvApp">Gotify</span> · <span id="pvRoute">Proxmox alerts</span><span class="pv-prio" id="pvPrio"></span></div>
+                <div class="notif-title" id="pvTitle">Backup job finished: vzdump</div>
+                <div class="notif-msg">Backup of VM 101 (nextcloud) finished successfully in 4m 12s.</div>
+              </div>
+            </div>
+          </section>
+
+          <div class="form-actions">
+            <button class="primary" type="submit" id="routeSave">Save route</button>
+            <button type="button" id="routeCancel" class="ghost">Cancel</button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <section id="messages" class="tab" hidden>
+      <h2>Recent messages</h2>
+      <table><thead><tr><th>Received</th><th>From</th><th>To</th><th>Subject</th><th>Status</th><th>Tries</th><th></th></tr></thead><tbody id="msgRows"></tbody></table>
+    </section>
+
+    <section id="settings" class="tab" hidden>
+      <h2>Settings</h2>
+      <form id="settingsForm" class="grid">
+        <label>Gotify server URL <input name="gotifyUrl" placeholder="https://gotify.example.com"></label>
+        <label class="row"><input type="checkbox" name="smtpStarttls"> Offer STARTTLS (cert from /data/tls or self-signed)</label>
+        <label class="row"><input type="checkbox" name="smtpAuth"> Require SMTP AUTH</label>
+        <div class="row"><button>Save settings</button></div>
+      </form>
+      <h3>Single sign-on (OIDC)</h3>
+      <p class="muted">Redirect URI to register with your provider: <code id="oidcRedirect"></code></p>
+      <p class="muted" id="oidcEnvNote" hidden></p>
+      <form id="oidcForm" class="grid">
+        <label>Public URL of MailBeacon <input name="publicUrl" placeholder="https://mailbeacon.example.com"></label>
+        <label>Issuer URL <input name="oidcIssuer" placeholder="https://auth.example.com/application/o/mailbeacon/"></label>
+        <label>Client ID <input name="oidcClientId"></label>
+        <label>Client secret <input name="oidcClientSecret" type="password" placeholder="blank keeps"></label>
+        <label>Scopes <input name="oidcScopes" placeholder="openid profile email"></label>
+        <label>Allowed emails or groups <input name="oidcAllowed" placeholder="comma separated, blank allows everyone"></label>
+        <label class="row"><input type="checkbox" name="localLoginDisabled"> Disable password login (needs one successful SSO login first)</label>
+        <div class="row"><button>Save SSO settings</button><span class="muted" id="oidcLast"></span></div>
+      </form>
+      <h3>SMTP users</h3>
+      <ul id="smtpUsers"></ul>
+      <form id="smtpUserForm" class="row"><input name="username" placeholder="username" required><input name="password" type="password" placeholder="password" required><button>Add / update</button></form>
+      <h3>Admin password</h3>
+      <form id="pwForm" class="row"><input name="current" type="password" placeholder="current" required><input name="password" type="password" placeholder="new (8+ chars)" required><button>Change</button></form>
+    </section>
+
+    <section id="logs" class="tab" hidden>
+      <h2>Logs</h2>
+      <pre id="logBox"></pre>
+    </section>
+  </main>
+  <footer class="app-footer"><span>MailBeacon</span> <span id="appVersion"></span> · <a href="https://github.com/Nerdy-Technician/MailBeacon" rel="noopener" target="_blank">GitHub</a></footer>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  <script src="/app.js"></script>
+</body>
+</html>

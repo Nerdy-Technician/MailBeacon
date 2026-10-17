@@ -1,0 +1,46 @@
+name: Bug report
+description: Something isn't working as expected
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for taking the time to report a bug. Please don't paste tokens, passwords or Apprise URLs.
+  - type: input
+    id: version
+    attributes:
+      label: MailBeacon version
+      description: Shown in the UI footer or at `/api/health`.
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How do you run it?
+      options: [Docker / Compose, Node.js directly, Other]
+    validations:
+      required: true
+  - type: dropdown
+    id: target
+    attributes:
+      label: Notification target involved
+      multiple: true
+      options: [Gotify, ntfy, Pushover, Apprise, Not target related]
+  - type: input
+    id: sender
+    attributes:
+      label: App sending the email
+      placeholder: Proxmox VE 8.2, TrueNAS SCALE, Synology DSM...
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: From the Logs tab or `docker logs mailbeacon`. Remove anything secret.
+      render: text
