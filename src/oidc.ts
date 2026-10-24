@@ -1,9 +1,12 @@
 import * as client from "openid-client";
 import type { Store } from "./db.js";
+import { checkUrl, pinAddress, safeFetchApi } from "./safefetch.js";
 
 export interface OidcSettings {
   issuer: string; clientId: string; clientSecret: string; scopes: string; allowed: string[];
   publicUrl: string; fromEnv: string[];
+  /** Issuer may be on a private address (LAN, loopback) and may use http://. */
+  allowPrivate: boolean;
 }
 
 const ENV: Record<string, string> = {
@@ -24,6 +27,7 @@ export function readOidcSettings(store: Store, env: NodeJS.ProcessEnv = process.
     allowed: pick("allowed", store.getSetting("oidc_allowed")).split(/[,\n]+/).map((x) => x.trim().toLowerCase()).filter(Boolean),
     publicUrl: pick("publicUrl", store.getSetting("public_url")).replace(/\/+$/, ""),
     fromEnv,
+    allowPrivate: (env.MAILBEACON_OIDC_ALLOW_PRIVATE ?? store.getSetting("oidc_allow_private")) === "1",
   };
 }
 export const oidcEnabled = (s: OidcSettings) => !!(s.issuer && s.clientId);
@@ -44,10 +48,13 @@ export class OidcLogin {
   constructor(private store: Store) {}
 
   private async config(s: OidcSettings): Promise<client.Configuration> {
-    const key = [s.issuer, s.clientId, s.clientSecret].join("\n");
+    const key = [s.issuer, s.clientId, s.clientSecret, s.allowPrivate].join("\n");
     if (this.cache?.key === key) return this.cache.config;
-    const opts = s.issuer.startsWith("http://") ? { execute: [client.allowInsecureRequests] } : undefined;
-    const config = await client.discovery(new URL(s.issuer), s.clientId, s.clientSecret || undefined, undefined, opts);
+    const issuer = checkUrl(s.issuer, s.allowPrivate);
+    await pinAddress(issuer, s.allowPrivate); // clear error before the library's own message
+    const opts: client.DiscoveryRequestOptions = { [client.customFetch]: safeFetchApi(s.allowPrivate) };
+    if (issuer.protocol === "http:") opts.execute = [client.allowInsecureRequests];
+    const config = await client.discovery(issuer, s.clientId, s.clientSecret || undefined, undefined, opts);
     this.cache = { key, config };
     return config;
   }

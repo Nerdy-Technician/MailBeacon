@@ -49,7 +49,12 @@ docker build -t mailbeacon:dev .   # optional
 
 ## Releases
 
-Maintainers bump `version` in `package.json` and move the `Unreleased` changelog entries under the new version on
-`main`. The release workflow then builds the multi-arch image, pushes it to GHCR and creates the GitHub release.
+Pull request titles follow [Conventional Commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, `docs:`,
+`deps:` ...). The title sets a label, and the labels decide the release-notes section and the next version in the
+draft release that is kept up to date on every merge to `main`.
 
-By contributing you agree that your contributions are licensed under the [MIT License](LICENSE).
+To release, a maintainer bumps `version` in `package.json`, moves the `Unreleased` changelog entries under the new
+version, merges that to `main`, then edits and publishes the draft release with the tag `vX.Y.Z`. Publishing runs
+the release workflow: it checks that the tag matches `package.json`, runs the tests, builds the linux/amd64 and
+linux/arm64 image with an SBOM and provenance, pushes `X.Y.Z`, `X.Y` and `latest` to GHCR, scans the image and adds
+the `docker pull` line and digest to the release notes.

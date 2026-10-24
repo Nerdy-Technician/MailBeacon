@@ -1,8 +1,9 @@
+import { stripSlashes } from "./strings.js";
 export interface GotifyPayload { title: string; message: string; priority: number; contentType: string }
 
 export async function sendGotify(baseUrl: string, token: string, p: GotifyPayload, timeoutMs = 10000): Promise<void> {
   if (!baseUrl) throw new Error("no Gotify URL configured");
-  const url = baseUrl.replace(/\/+$/, "") + "/message";
+  const url = stripSlashes(baseUrl) + "/message";
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-Gotify-Key": token },

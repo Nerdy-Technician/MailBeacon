@@ -1,0 +1,10 @@
+# Default gitleaks rules, plus the fake tokens used as fixtures in the test suite.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Test fixture tokens (not real credentials)"
+regexTarget = "match"
+regexes = ['''AbCdEfGhIjKlMn[0-9]''', '''AgotifySECRET[0-9]{2}''']
+paths = ['''^test/''']
+condition = "AND"

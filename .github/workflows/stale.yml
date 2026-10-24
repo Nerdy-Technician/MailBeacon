@@ -1,0 +1,36 @@
+name: Stale
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  stale:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get a nerdy-intern token
+        id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.NERDY_INTERN_APP_ID }}
+          private-key: ${{ secrets.NERDY_INTERN_PRIVATE_KEY }}
+          permission-issues: write
+          permission-pull-requests: write
+      - uses: actions/stale@4391f3da665fdf50b6810c1a66712fb9ba21aa93 # v11.0.0
+        with:
+          repo-token: ${{ steps.app.outputs.token }}
+          days-before-stale: 60
+          days-before-close: 14
+          stale-issue-label: stale
+          stale-pr-label: stale
+          exempt-issue-labels: pinned,security,bug,help wanted
+          exempt-pr-labels: pinned,security,dependencies
+          exempt-all-milestones: true
+          stale-issue-message: "No activity for 60 days, so this is marked stale. It closes in 14 days unless there is a new comment."
+          stale-pr-message: "No activity for 60 days, so this PR is marked stale. It closes in 14 days unless it is updated."
+          close-issue-message: "Closed after 14 more days without activity. Comment if it is still relevant and it can be reopened."
+          operations-per-run: 60

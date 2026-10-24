@@ -8,10 +8,12 @@ const PREFIX = "enc:v1:";
 export function loadKey(dataDir: string, secret?: string, warn: (m: string) => void = console.warn): Buffer {
   if (secret) return crypto.createHash("sha256").update(secret, "utf8").digest();
   const file = path.join(dataDir, "secret.key");
-  if (fs.existsSync(file)) return Buffer.from(fs.readFileSync(file, "utf8").trim(), "hex");
+  const read = () => Buffer.from(fs.readFileSync(file, "utf8").trim(), "hex");
+  try { return read(); } catch (e) { if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e; }
   const key = crypto.randomBytes(32);
   fs.mkdirSync(dataDir, { recursive: true });
-  fs.writeFileSync(file, key.toString("hex"), { mode: 0o600 });
+  try { fs.writeFileSync(file, key.toString("hex"), { mode: 0o600, flag: "wx" }); }
+  catch (e) { if ((e as NodeJS.ErrnoException).code === "EEXIST") return read(); throw e; }
   warn(`MAILBEACON_SECRET not set: generated a key at ${file}. Back it up, or set MAILBEACON_SECRET.`);
   return key;
 }

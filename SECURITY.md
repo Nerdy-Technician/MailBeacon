@@ -6,8 +6,8 @@ Only the latest release of MailBeacon gets security fixes.
 
 | Version | Supported |
 |---|---|
-| 0.1.x | Yes |
-| < 0.1 | No |
+| 0.3.x | Yes |
+| < 0.3 | No |
 
 ## Reporting a vulnerability
 
@@ -16,6 +16,13 @@ Please **don't open a public issue**. Report it privately through
 
 Include the version, how you run it, steps to reproduce and the impact you expect. You should get a reply within
 a few days. Once a fix is released the advisory is published and you're credited unless you'd rather not be.
+
+## How the project checks itself
+
+Every push and pull request runs CodeQL, Trivy (dependencies, Dockerfile and the built image), gitleaks secret
+scanning and a dependency review; results appear under the repository's Security tab. Release images are multi-arch,
+come with an SBOM and signed build provenance (`gh attestation verify oci://ghcr.io/nerdy-technician/mailbeacon:<version> -R Nerdy-Technician/MailBeacon`),
+and are scanned again after publishing. Dependencies are updated weekly.
 
 ## Scope
 

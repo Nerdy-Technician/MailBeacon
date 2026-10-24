@@ -1,0 +1,88 @@
+# Conventional PR title, a release label, and a dependency review. Runs as nerdy-intern.
+name: PR checks
+
+on:
+  pull_request_target:
+    types: [opened, reopened, edited, synchronize, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-checks-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  title:
+    name: Conventional title
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get a nerdy-intern token
+        id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.NERDY_INTERN_APP_ID }}
+          private-key: ${{ secrets.NERDY_INTERN_PRIVATE_KEY }}
+          permission-pull-requests: read
+      # Nothing from the PR is checked out; only its title is read.
+      - uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6.1.1
+        env:
+          GITHUB_TOKEN: ${{ steps.app.outputs.token }}
+        with:
+          types: |
+            feat
+            fix
+            docs
+            style
+            refactor
+            perf
+            test
+            build
+            ci
+            chore
+            revert
+            security
+            deps
+          requireScope: false
+
+  labels:
+    name: Release label
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get a nerdy-intern token
+        id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.NERDY_INTERN_APP_ID }}
+          private-key: ${{ secrets.NERDY_INTERN_PRIVATE_KEY }}
+          permission-pull-requests: write
+          permission-issues: write
+      - uses: mheap/github-action-required-labels@23e10fde7e062233401931a0eece796cd9bf3177 # v5.6.0
+        with:
+          token: ${{ steps.app.outputs.token }}
+          mode: minimum
+          count: 1
+          labels: "breaking, security, feature, enhancement, fix, bug, performance, documentation, dependencies, chore, ci, refactor, test, build, skip-changelog"
+          add_comment: true
+          message: "This PR needs at least one release label ({{ provided }} found). Most are added automatically from a conventional title such as `fix: ...` or `feat: ...`."
+
+  dependency-review:
+    name: Dependency review
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get a nerdy-intern token
+        id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.NERDY_INTERN_APP_ID }}
+          private-key: ${{ secrets.NERDY_INTERN_PRIVATE_KEY }}
+          permission-pull-requests: write
+          permission-contents: read
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          repo-token: ${{ steps.app.outputs.token }}
+          base-ref: ${{ github.event.pull_request.base.sha }}
+          head-ref: ${{ github.event.pull_request.head.sha }}
+          fail-on-severity: high
+          comment-summary-in-pr: on-failure
+          deny-licenses: GPL-3.0-only, AGPL-3.0-only

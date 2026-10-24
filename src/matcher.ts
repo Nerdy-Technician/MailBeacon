@@ -1,19 +1,25 @@
 import type { MatchType, Route } from "./db.js";
+import { trySafe, type SafeRegex } from "./saferegex.js";
 
 export interface Envelope { sender: string; recipients: string[]; subject?: string }
 
 const norm = (s: string) => s.trim().toLowerCase();
 
-function safeRegex(p: string): RegExp | null {
-  try { return new RegExp(p, "i"); } catch { return null; }
+function safeRegex(p: string): SafeRegex | null {
+  return trySafe(p, { ignoreCase: true });
 }
 
 /** Recipient patterns: exact address, or a glob with * (e.g. *@alerts.local). */
 export function recipientMatches(pattern: string, addr: string): boolean {
   const p = norm(pattern);
   if (!p.includes("*")) return p === norm(addr);
-  const re = new RegExp("^" + p.split("*").map((x) => x.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join(".*") + "$");
-  return re.test(norm(addr));
+  const parts = p.split("*");
+  const a = norm(addr);
+  if (!a.startsWith(parts[0]!) || !a.endsWith(parts[parts.length - 1]!) || a.length < parts[0]!.length + parts[parts.length - 1]!.length) return false;
+  let pos = parts[0]!.length;
+  const end = a.length - parts[parts.length - 1]!.length;
+  for (const mid of parts.slice(1, -1)) { const i = a.indexOf(mid, pos); if (i < 0 || i + mid.length > end) return false; pos = i + mid.length; }
+  return true;
 }
 
 /** Check one pattern against a sample, as the UI's "test this pattern" box does. */
@@ -63,4 +69,30 @@ export function matchRoute(routes: Route[], env: Envelope, opts: { includeSubjec
 export function canAcceptRecipient(routes: Route[], sender: string, rcpt: string): boolean {
   if (matchRoute(routes, { sender, recipients: [rcpt] })) return true;
   return routes.some((r) => r.enabled && r.matchType === "subject");
+}
+
+export interface RouteTrace { id: number; name: string; matchType: MatchType; enabled: boolean; matches: boolean | null; note?: string }
+export interface Preview { accepted: boolean; stage: "rcpt" | "data" | null; route: { id: number; name: string } | null; reason: string; trace: RouteTrace[] }
+
+/**
+ * Explain what MailBeacon would do with a message, without sending anything: which route wins,
+ * and if nothing matches, whether it is refused at RCPT TO or after DATA (subject routes).
+ */
+export function previewRoute(routes: Route[], env: { sender: string; recipients: string[]; subject: string }): Preview {
+  const sorted = [...routes].sort((a, b) => a.order - b.order || a.id - b.id);
+  const winner = matchRoute(routes, env, { includeSubject: true });
+  let past = false;
+  const trace: RouteTrace[] = sorted.map((r) => {
+    const t: RouteTrace = { id: r.id, name: r.name, matchType: r.matchType, enabled: r.enabled, matches: null };
+    if (!r.enabled) { t.note = "disabled"; return t; }
+    if (past) { t.note = "not checked: an earlier route matched"; return t; }
+    t.matches = matchRoute([r], env, { includeSubject: true }) === r;
+    if (winner && r.id === winner.id) { past = true; t.note = "first match wins"; }
+    return t;
+  });
+  if (winner) return { accepted: true, stage: null, route: { id: winner.id, name: winner.name }, reason: `delivered by route "${winner.name}"`, trace };
+  const rcptOk = env.recipients.length > 0 && env.recipients.every((a) => canAcceptRecipient(routes, env.sender, a));
+  return rcptOk
+    ? { accepted: false, stage: "data", route: null, reason: "accepted at RCPT TO (a subject route exists) but rejected with 550 after DATA: no route matches", trace }
+    : { accepted: false, stage: "rcpt", route: null, reason: "rejected with 550 at RCPT TO: no route matches", trace };
 }

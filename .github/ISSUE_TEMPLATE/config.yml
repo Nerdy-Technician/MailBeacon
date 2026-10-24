@@ -3,3 +3,6 @@ contact_links:
   - name: Report a security vulnerability
     url: https://github.com/Nerdy-Technician/MailBeacon/security/advisories/new
     about: Please report security issues privately, not as a public issue.
+  - name: Documentation
+    url: https://github.com/Nerdy-Technician/MailBeacon#readme
+    about: Setup, configuration and API docs.

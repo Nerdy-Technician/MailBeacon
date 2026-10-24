@@ -10,4 +10,13 @@ services:
       - "2525:2525"   # SMTP
       - "8080:8080"   # Web UI
     volumes:
+      # runs as uid 1000: create it first with  mkdir -p data && sudo chown 1000:1000 data
       - ./data:/data
+    # Same check as the image's HEALTHCHECK: SMTP listener and database only (?core=1), so a down
+    # notification service never marks the container unhealthy. Monitor /healthz (no ?core) for that.
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:'+(process.env.MAILBEACON_WEB_PORT||8080)+'/healthz?core=1').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3

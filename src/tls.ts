@@ -10,12 +10,15 @@ const files = (dataDir: string) => {
 /** Generate a self-signed pair in /data/tls unless cert.pem + key.pem already exist. */
 export async function ensureTls(dataDir: string, hostname: string): Promise<void> {
   const { dir, certF, keyF } = files(dataDir);
-  if (fs.existsSync(certF) && fs.existsSync(keyF)) return;
+  try { loadTls(dataDir); return; } catch (e) { if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e; }
   fs.mkdirSync(dir, { recursive: true });
   const notAfterDate = new Date(Date.now() + 3650 * 24 * 3600 * 1000);
   const pems = await generate([{ name: "commonName", value: hostname }], { keySize: 2048, notAfterDate, algorithm: "sha256" });
-  fs.writeFileSync(certF, pems.cert);
-  fs.writeFileSync(keyF, pems.private, { mode: 0o600 });
+  // Write each file with O_EXCL so a pair created meanwhile (or a symlink planted in the dir) is never overwritten.
+  try {
+    fs.writeFileSync(keyF, pems.private, { mode: 0o600, flag: "wx" });
+    fs.writeFileSync(certF, pems.cert, { flag: "wx" });
+  } catch (e) { if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e; }
 }
 
 /** Load /data/tls/cert.pem + key.pem (call ensureTls first). */
