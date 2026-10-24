@@ -10,6 +10,7 @@ services:
       - "2525:2525"   # SMTP
       - "8080:8080"   # Web UI
     volumes:
+      # runs as uid 1000: create it first with  mkdir -p data && sudo chown 1000:1000 data
       - ./data:/data
     # Same check as the image's HEALTHCHECK: SMTP listener and database only (?core=1), so a down
     # notification service never marks the container unhealthy. Monitor /healthz (no ?core) for that.

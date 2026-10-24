@@ -30,8 +30,10 @@ COPY --chmod=0755 docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 # drop npm/corepack from the runtime image; the app does not need them
 RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
  && mkdir -p /data && chown node:node /data
-# Starts as root only long enough to chown /data, then runs as "node" via gosu.
-# Run with --user 1000:1000 (or user: in compose) to skip the chown entirely.
+# Runs as "node" (uid 1000). Data volumes left owned by root by older versions:
+# start once with --user 0 (the entrypoint then chowns /data and drops to node),
+# or chown the volume to 1000:1000. See docker-entrypoint.sh.
+USER node
 VOLUME ["/data"]
 EXPOSE 2525 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \

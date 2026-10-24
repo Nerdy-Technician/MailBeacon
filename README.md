@@ -123,6 +123,7 @@ Almost everything is set in the web UI. Environment variables cover ports, the e
 | `MAILBEACON_OIDC_CLIENT_SECRET` | *(empty)* | OIDC client secret. |
 | `MAILBEACON_OIDC_SCOPES` | `openid profile email` | Scopes to request. |
 | `MAILBEACON_OIDC_ALLOWED` | *(empty)* | Comma-separated emails and/or group names allowed in. Empty lets in anyone the provider authenticates. |
+| `MAILBEACON_OIDC_ALLOW_PRIVATE` | `0` | `1` lets the issuer be on a private, loopback or link-local address and use `http://` (Settings › Sign-in and SSO › *Allow private issuer*). Off, only public `https://` issuers are contacted. Cloud metadata addresses are always refused. Installs that already had SSO configured start with it on. |
 | `MAILBEACON_FORCE_LOCAL_LOGIN` | *(empty)* | Set to `1` to turn password login back on if you locked yourself out of SSO. |
 | `MAILBEACON_METRICS_TOKEN` | *(empty)* | If set, `/metrics` needs `Authorization: Bearer <token>` (or a logged-in UI session). If empty, `/metrics` is open. |
 | `MAILBEACON_DRY_RUN` | *(empty)* | Set to `1` for a test instance: mail is routed and recorded in History, but no notification is ever sent. |
@@ -150,8 +151,13 @@ Everything MailBeacon keeps lives in `/data`; back up the whole folder.
 | `secret.key` | Encryption key, only created if `MAILBEACON_SECRET` is not set |
 | `tls/cert.pem`, `tls/key.pem` | STARTTLS certificate and key (generated if missing) |
 
-The container starts as root only long enough to `chown` `/data` to the `node` user, then drops privileges, so a
-folder Docker creates as root just works. Run it with `user: "1000:1000"` to skip that step entirely.
+The container runs as the unprivileged `node` user (uid/gid 1000). A named volume just works. A host folder must be
+writable by uid 1000: `mkdir -p ./data && sudo chown 1000:1000 ./data`. If it isn't, the container stops at start-up
+with a message saying how to fix it.
+
+**Upgrading from 0.2 or earlier** (the container ran as root, so files in `/data` may be owned by root): either run
+`sudo chown -R 1000:1000 ./data` once, or start 0.3 once with `user: "0:0"` in compose (`--user 0` with `docker run`).
+Started as root, the entrypoint fixes the ownership and still runs MailBeacon as `node`. Remove the `user:` line afterwards.
 
 > **Keep your key.** If you lose or change `MAILBEACON_SECRET` (or `secret.key`), stored tokens can't be decrypted
 > and you'll need to re-enter them.

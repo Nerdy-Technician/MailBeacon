@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **The image now runs as the non-root `node` user (uid 1000).** Data folders left owned by root by older versions need a one-time `chown -R 1000:1000`, or one start with `user: "0:0"`, which fixes ownership and then drops to `node`. The container explains this at start-up if `/data` isn't writable.
+- Single sign-on only contacts public `https://` issuers unless **Allow private issuer** is on (Settings › Sign-in and SSO, also in the setup wizard; `MAILBEACON_OIDC_ALLOW_PRIVATE=1`). Addresses are checked after DNS resolution and the connection is pinned to the checked address; redirects are limited to 3 and checked again; URLs with credentials are refused; cloud metadata addresses are always refused. Installs that already had SSO configured start with the setting on.
+- API keys and session cookies are both checked on every request before access is decided. A wrong key never falls back to the cookie. The password is checked on every login attempt, including during a lockout, so the response time doesn't reveal a lockout.
 - User-supplied regular expressions (route patterns, priority and extraction rules) now run on a linear-time RE2 engine, so a pattern such as `(a+)+$` can no longer stall mail handling. Patterns are capped at 1000 characters; lookarounds and backreferences are rejected with a clear message when saved.
 - Every HTTP route is rate-limited per client (`MAILBEACON_HTTP_RATE_LIMIT`, default 1200 a minute; 429 with Retry-After), and password logins to 20 a minute.
 - Extraction rule names and preview variables live in prototype-less objects, so a name like `__proto__` cannot change object behaviour. URL and name trimming no longer uses backtracking regexes.
