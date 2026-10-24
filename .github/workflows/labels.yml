@@ -1,0 +1,31 @@
+# Keeps the repository labels in line with .github/labels.yml.
+name: Labels
+
+on:
+  push:
+    branches: [main]
+    paths: [.github/labels.yml, .github/workflows/labels.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Get a nerdy-intern token
+        id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.NERDY_INTERN_APP_ID }}
+          private-key: ${{ secrets.NERDY_INTERN_PRIVATE_KEY }}
+          permission-issues: write
+      - uses: crazy-max/ghaction-github-labeler@548a7c3603594ec17c819e1239f281a3b801ab4d # v6.0.0
+        with:
+          github-token: ${{ steps.app.outputs.token }}
+          yaml-file: .github/labels.yml
+          skip-delete: true

@@ -1,0 +1,54 @@
+# Dependabot opens the PR; nerdy-intern labels, approves and enables auto-merge for patch and minor updates.
+# The merge itself waits for the required checks (branch protection).
+name: Dependabot auto-merge
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: read
+
+jobs:
+  automerge:
+    name: Approve and auto-merge
+    if: github.event.pull_request.user.login == 'dependabot[bot]' && github.repository == 'Nerdy-Technician/MailBeacon'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get a nerdy-intern token
+        id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.NERDY_INTERN_APP_ID }}
+          private-key: ${{ secrets.NERDY_INTERN_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+          permission-issues: write
+      - id: meta
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
+        with:
+          github-token: ${{ steps.app.outputs.token }}
+      - name: Label
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          PR: ${{ github.event.pull_request.html_url }}
+          UPDATE: ${{ steps.meta.outputs.update-type }}
+        run: |
+          gh pr edit "$PR" --add-label dependencies
+          if [ "$UPDATE" = "version-update:semver-major" ]; then gh pr edit "$PR" --add-label breaking; fi
+      - name: Approve and enable auto-merge (patch and minor)
+        if: steps.meta.outputs.update-type == 'version-update:semver-patch' || steps.meta.outputs.update-type == 'version-update:semver-minor'
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          PR: ${{ github.event.pull_request.html_url }}
+        run: |
+          gh pr review "$PR" --approve --body "Patch/minor update, merging once CI is green."
+          gh pr merge "$PR" --auto --squash
+      - name: Leave major updates for a human
+        if: steps.meta.outputs.update-type == 'version-update:semver-major'
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          PR: ${{ github.event.pull_request.html_url }}
+          DEPS: ${{ steps.meta.outputs.dependency-names }}
+        run: |
+          gh pr comment "$PR" --body "Major update of ${DEPS}: not auto-merged, please review the changelog."

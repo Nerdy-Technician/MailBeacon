@@ -1,3 +1,6 @@
+<!-- Title: use a conventional prefix, e.g. "feat: digest per destination" or "fix(smtp): STARTTLS on 587".
+     It sets the release label and the release-notes section. -->
+
 ## What does this change?
 
 <!-- A short description, and the issue it fixes if there is one (Fixes #123). -->

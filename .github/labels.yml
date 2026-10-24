@@ -1,0 +1,25 @@
+- { name: breaking, color: b60205, description: "Breaking change (major version)" }
+- { name: security, color: c90000, description: "Security fix or hardening" }
+- { name: feature, color: 0e8a16, description: "New feature (minor version)" }
+- { name: enhancement, color: 84b6eb, description: "Improvement to an existing feature" }
+- { name: fix, color: d93f0b, description: "Bug fix" }
+- { name: bug, color: d73a4a, description: "Something isn't working" }
+- { name: performance, color: fbca04, description: "Faster or lighter" }
+- { name: documentation, color: 0075ca, description: "README, docs or comments" }
+- { name: dependencies, color: 0366d6, description: "Dependency update" }
+- { name: chore, color: ededed, description: "Maintenance" }
+- { name: ci, color: 5319e7, description: "GitHub Actions and CI" }
+- { name: refactor, color: c5def5, description: "Code change without behaviour change" }
+- { name: test, color: bfd4f2, description: "Tests only" }
+- { name: build, color: 1d76db, description: "Docker, packaging or build" }
+- { name: ui, color: f9d0c4, description: "Web UI" }
+- { name: skip-changelog, color: ffffff, description: "Leave out of the release notes" }
+- { name: stale, color: cfd3d7, description: "No recent activity" }
+- { name: pinned, color: 006b75, description: "Never marked stale" }
+- { name: help wanted, color: 008672, description: "Extra attention is needed" }
+- { name: good first issue, color: 7057ff, description: "Good for newcomers" }
+- { name: question, color: d876e3, description: "Further information is requested" }
+- { name: duplicate, color: cfd3d7, description: "This issue or pull request already exists" }
+- { name: wontfix, color: ffffff, description: "This will not be worked on" }
+- { name: github-actions, color: 000000, description: "GitHub Actions dependency" }
+- { name: docker, color: 2496ed, description: "Docker dependency" }

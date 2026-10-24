@@ -1,6 +1,6 @@
 name: Feature request
 description: Suggest an idea or a new notification target
-labels: [enhancement]
+labels: [feature]
 body:
   - type: textarea
     id: problem
@@ -18,3 +18,10 @@ body:
     id: alternatives
     attributes:
       label: Alternatives you've considered
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options: [Routing and matching, Destinations, Web UI, API, Security and sign-in, Docker and deployment, Other]
+    validations:
+      required: true

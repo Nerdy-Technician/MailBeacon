@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Project automation**: CI on Node 22 and 24 with a multi-arch Docker build and smoke test; CodeQL; Trivy and gitleaks scans reported to code scanning; OpenSSF Scorecard; dependency review, conventional PR titles and release labels on pull requests; Release Drafter with an autolabeler; weekly grouped Dependabot updates with auto-merge for patch and minor versions once CI passes; stale issues and PRs; a labels sync; CODEOWNERS and refreshed issue forms. Every action is pinned to a commit SHA.
+- **Releases** are now made by publishing the draft GitHub release; that builds and pushes the image (`X.Y.Z`, `X.Y`, `latest`) with an SBOM and provenance and scans it. Bumping `package.json` on `main` no longer releases on its own.
+
 ## [0.3.0] - unreleased
 
 ### Added

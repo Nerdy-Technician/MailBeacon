@@ -1,0 +1,5 @@
+# Every change needs a review from the maintainer.
+* @Nerdy-Technician
+/.github/ @Nerdy-Technician
+/src/auth.ts @Nerdy-Technician
+/SECURITY.md @Nerdy-Technician

@@ -1,0 +1,54 @@
+# Keeps a draft release up to date from merged PRs and labels PRs from their title, branch and files.
+name: Release Drafter
+
+on:
+  push:
+    branches: [main]
+  pull_request_target:
+    types: [opened, reopened, synchronize, edited]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-drafter-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  autolabel:
+    name: Label the pull request
+    if: github.event_name == 'pull_request_target'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get a nerdy-intern token
+        id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.NERDY_INTERN_APP_ID }}
+          private-key: ${{ secrets.NERDY_INTERN_PRIVATE_KEY }}
+          permission-pull-requests: write
+          permission-issues: write
+          permission-contents: read
+      # pull_request_target: nothing from the PR is checked out or run here.
+      - uses: release-drafter/release-drafter/autolabeler@978bb0b30c5ee8cdd332ced253758157150d43f0 # v7.10.0
+        with:
+          token: ${{ steps.app.outputs.token }}
+          config-name: release-drafter.yml
+
+  draft:
+    name: Update the draft release
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get a nerdy-intern token
+        id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.NERDY_INTERN_APP_ID }}
+          private-key: ${{ secrets.NERDY_INTERN_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: read
+      - uses: release-drafter/release-drafter@978bb0b30c5ee8cdd332ced253758157150d43f0 # v7.10.0
+        with:
+          token: ${{ steps.app.outputs.token }}
+          config-name: release-drafter.yml
