@@ -98,7 +98,7 @@ describe("OIDC login and multi-target routes", () => {
   };
 
   it("saves OIDC settings, encrypts the client secret and shows the redirect URI", async () => {
-    expect((await web("/api/settings", j("PUT", { oidcIssuer: idp.issuer, oidcClientId: "mailbeacon", oidcClientSecret: "shh", oidcAllowed: "mailbeacon admins", publicUrl: base }))).status).toBe(200);
+    expect((await web("/api/settings", j("PUT", { oidcAllowPrivate: true, oidcIssuer: idp.issuer, oidcClientId: "mailbeacon", oidcClientSecret: "shh", oidcAllowed: "mailbeacon admins", publicUrl: base }))).status).toBe(200);
     const s = await (await web("/api/settings", j("GET"))).json();
     expect(s).toMatchObject({ oidcIssuer: idp.issuer, oidcClientSecretSet: true, oidcRedirectUri: base + "/api/oidc/callback", oidcScopes: "openid profile email" });
     expect(JSON.stringify(s)).not.toContain("shh");
@@ -200,7 +200,7 @@ describe("OIDC group-to-role mapping (Authentik style) and picture claim", () =>
     app = await start({ dataDir: fs.mkdtempSync(path.join(os.tmpdir(), "mb-oidc2-")), smtpPort, webPort, host: "127.0.0.1", maxSizeBytes: 64 * 1024, smtpHostname: "test", secret: "oidc2" });
     const r = await web("/api/setup", j("POST", { username: "owner", password: "longpassword" }, ""));
     admin = (r.headers.get("set-cookie") ?? "").split(";")[0];
-    expect((await web("/api/settings", j("PUT", { oidcIssuer: idp.issuer, oidcClientId: "mailbeacon", oidcClientSecret: "shh", publicUrl: base,
+    expect((await web("/api/settings", j("PUT", { oidcAllowPrivate: true, oidcIssuer: idp.issuer, oidcClientId: "mailbeacon", oidcClientSecret: "shh", publicUrl: base,
       oidcGroupsClaim: "groups", oidcAdminGroups: "mailbeacon-admins", oidcEditorGroups: "mailbeacon-editors", oidcViewerGroups: "mailbeacon-viewers", oidcDefaultRole: "none" }))).status).toBe(200);
   });
   afterAll(async () => { await app.stop(); idp.srv.close(); });

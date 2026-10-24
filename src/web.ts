@@ -31,6 +31,7 @@ import { ingest, ingestParsed } from "./smtp.js";
 import { CALLBACK_PATH, isAllowed, OidcLogin, oidcEnabled, readOidcSettings } from "./oidc.js";
 import { SECRET_KEYS, sendToTarget, TARGET_TYPES, validateTarget, type TargetConfig, type TargetSecrets, type TargetType, type TargetRoute } from "./targets.js";
 import { stripSlashes } from "./strings.js";
+import { checkUrl, safeFetch } from "./safefetch.js";
 
 const SESSION_TTL = 12 * 3600 * 1000;
 const publicDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../public");
@@ -50,7 +51,7 @@ declare module "fastify" { interface FastifyRequest { principal?: Principal } }
 interface SettingsBody {
   gotifyUrl?: string; smtpStarttls?: boolean; smtpAuth?: boolean;
   publicUrl?: string; oidcIssuer?: string; oidcClientId?: string; oidcClientSecret?: string; oidcScopes?: string; oidcAllowed?: string;
-  localLoginDisabled?: boolean; limits?: Partial<Limits>;
+  localLoginDisabled?: boolean; oidcAllowPrivate?: boolean; limits?: Partial<Limits>;
   oidcGroupsClaim?: string; oidcAdminGroups?: string; oidcEditorGroups?: string; oidcViewerGroups?: string; oidcDefaultRole?: string;
   timezone?: string; attachments?: Partial<AttachmentLimits>; gravatar?: boolean;
   appName?: string; defaultTheme?: string;
@@ -121,7 +122,12 @@ export function createWeb(store: Store, opts: { onSmtpSettingsChanged?: () => Pr
   app.addContentTypeParser(AVATAR_TYPES, { parseAs: "buffer", bodyLimit: AVATAR_MAX_BYTES + 1024 }, (_req, body, done) => done(null, body));
   const sessions = new Map<string, { userId: number; exp: number }>();
   const failures = new Map<string, { n: number; until: number }>();
+  /** Lockout bucket for a login attempt: the address Fastify resolved, else the socket's. */
+  const loginClientKey = (req: FastifyRequest) => `ip:${req.ip || req.socket.remoteAddress || "unknown"}`;
   const oidc = new OidcLogin(store);
+  // Installs that set up SSO before "Allow private issuer" existed keep working: their issuer was reachable
+  // without the check, so the setting starts on for them. New installs start with it off.
+  if (store.getSetting("oidc_allow_private") === undefined && store.getSetting("oidc_issuer")) store.setSetting("oidc_allow_private", "1");
   const oidcSettings = () => readOidcSettings(store);
   /** Local password login can only be switched off once an OIDC login has worked; MAILBEACON_FORCE_LOCAL_LOGIN=1 is the escape hatch. */
   const localLoginEnabled = () => process.env.MAILBEACON_FORCE_LOCAL_LOGIN === "1"
@@ -136,21 +142,18 @@ export function createWeb(store: Store, opts: { onSmtpSettingsChanged?: () => Pr
   /** Session cookie or API key → principal. Disabled or deleted users get nothing. */
   const resolve = (req: FastifyRequest): Principal | undefined => {
     // An explicit API key wins over a session cookie, so the key's (narrower) scopes apply and it's the one audited.
-    const k = bearer(req);
-    if (k) {
-      const key = store.verifyApiKey(k);
-      const user = key ? store.getUser(key.userId) : undefined;
-      const viaQuery = !headerKey(req);
-      if (viaQuery && key && !(key.scopes.length === 1 && key.scopes[0] === "messages:send")) return undefined;
-      if (key && user && !user.disabled) return { user, via: "key", scopes: key.scopes, keyId: key.id, keyName: key.name };
-      return undefined;
-    }
+    // Both credentials are checked first, whatever the request carries; the decision below only reads the results.
+    const presented = bearer(req);
+    const key = store.verifyApiKey(presented ?? "");
+    const keyUser = key ? store.getUser(key.userId) : undefined;
     const t = cookie(req);
-    const s = t ? sessions.get(t) : undefined;
-    if (s && s.exp > Date.now()) {
-      const user = store.getUser(s.userId);
-      if (user && !user.disabled) return { user, via: "session" };
-    }
+    const s = sessions.get(t ?? "");
+    const sessionUser = s && s.exp > Date.now() ? store.getUser(s.userId) : undefined;
+    const sendOnly = !!key && key.scopes.length === 1 && key.scopes[0] === "messages:send";
+    const keyOk = !!key && !!keyUser && !keyUser.disabled && (headerKey(req) !== undefined || sendOnly);
+    if (keyOk) return { user: keyUser!, via: "key", scopes: key!.scopes, keyId: key!.id, keyName: key!.name };
+    if (presented !== undefined) return undefined; // a bad key never falls back to the cookie
+    if (sessionUser && !sessionUser.disabled) return { user: sessionUser, via: "session" };
     return undefined;
   };
   const authed = (req: FastifyRequest) => !!resolve(req);
@@ -434,22 +437,28 @@ export function createWeb(store: Store, opts: { onSmtpSettingsChanged?: () => Pr
     return r;
   });
   app.post("/api/oidc/test", async (req, reply) => {
-    const b = (req.body ?? {}) as { issuer?: string };
+    const b = (req.body ?? {}) as { issuer?: string; allowPrivate?: boolean };
     const issuer = String(b.issuer || oidcSettings().issuer || "").trim();
-    if (!/^https?:\/\/[^\s]+$/.test(issuer)) return reply.code(400).send({ error: "issuer must be an http:// or https:// URL" });
-    const url = stripSlashes(issuer) + "/.well-known/openid-configuration";
+    // the form's unsaved checkbox wins, so the test matches what Save would do
+    const allowPrivate = typeof b.allowPrivate === "boolean" ? b.allowPrivate : oidcSettings().allowPrivate;
+    let url: string;
+    try { url = checkUrl(stripSlashes(issuer) + "/.well-known/openid-configuration", allowPrivate).href; }
+    catch (e) { return reply.code(400).send({ error: (e as Error).message }); }
     const t0 = Date.now();
     try {
-      const res = await fetch(url, { signal: AbortSignal.timeout(6000), redirect: "follow", headers: { Accept: "application/json" } });
-      if (!res.ok) return { ok: false, error: `discovery document answered HTTP ${res.status}`, url };
-      const d = (await res.json()) as Record<string, unknown>;
+      const res = await safeFetch(url, { allowPrivate, timeoutMs: 6000, headers: { Accept: "application/json" } });
+      if (res.status < 200 || res.status >= 300) return { ok: false, error: `discovery document answered HTTP ${res.status}`, url };
+      const d = JSON.parse(res.body.toString("utf8")) as Record<string, unknown>;
       const missing = ["authorization_endpoint", "token_endpoint", "jwks_uri"].filter((k) => typeof d[k] !== "string");
       const same = stripSlashes(String(d.issuer ?? "")) === stripSlashes(issuer);
       const ok = same && !missing.length;
       audit(req, "oidc.tested", null, ok ? "ok" : "problem");
       return { ok, url, ms: Date.now() - t0, issuer: String(d.issuer ?? ""), issuerMatches: same, missing,
         error: ok ? undefined : !same ? `the document's issuer (${String(d.issuer ?? "none")}) differs from the one entered` : `missing ${missing.join(", ")}` };
-    } catch (e) { return { ok: false, url, error: (e as Error).name === "TimeoutError" ? "no answer within 6 seconds" : (e as Error).message }; }
+    } catch (e) {
+      const err = e as Error;
+      return { ok: false, url, error: err.name === "TimeoutError" ? "no answer within 6 seconds" : err instanceof SyntaxError ? "the discovery document is not JSON" : err.message };
+    }
   });
 
   app.post("/api/setup/complete", async (req) => {
@@ -463,21 +472,25 @@ export function createWeb(store: Store, opts: { onSmtpSettingsChanged?: () => Pr
 
   app.post("/api/login", { config: { rateLimit: { max: 20, timeWindow: "1 minute" } } }, async (req, reply) => {
     if (!localLoginEnabled()) return reply.code(403).send({ error: "password login is disabled, use single sign-on" });
-    const ip = req.ip;
-    const f = failures.get(ip);
-    if (f && f.until > Date.now()) return reply.code(429).send({ error: "too many attempts, wait a minute" });
     const { password, username } = (req.body ?? {}) as { password?: string; username?: string };
     const name = String(username ?? "admin").trim() || "admin"; // 0.2.0 clients send only a password
-    const user = password ? store.checkLogin(name, password) : undefined;
+    // Check the password first, every time (same cost whether or not the client is locked out), then decide.
+    const user = store.checkLogin(name, typeof password === "string" ? password : "");
+    // The lockout is keyed on the connection's address as Fastify resolved it (trustProxy decides whether
+    // X-Forwarded-For counts), not on anything in the body.
+    const client = loginClientKey(req);
+    const f = failures.get(client);
+    const locked = !!f && f.until > Date.now();
+    if (locked) return reply.code(429).send({ error: "too many attempts, wait a minute" });
     if (!user) {
       const n = (f?.n ?? 0) + 1;
-      failures.set(ip, { n, until: n >= 5 ? Date.now() + 60000 : 0 });
-      store.log("warn", `failed login for "${name.slice(0, 64)}" from ${ip}`);
-      store.audit(name.slice(0, 64), "login.failed", null, null, ip);
+      failures.set(client, { n, until: n >= 5 ? Date.now() + 60000 : 0 });
+      store.log("warn", `failed login for "${name.slice(0, 64)}" from ${req.ip}`);
+      store.audit(name.slice(0, 64), "login.failed", null, null, req.ip);
       return reply.code(401).send({ error: "wrong username or password" });
     }
-    failures.delete(ip);
-    store.audit(user.username, "login", `user:${user.username}`, null, ip);
+    failures.delete(client);
+    store.audit(user.username, "login", `user:${user.username}`, null, req.ip);
     startSession(reply, user);
     return { ok: true };
   });
@@ -511,7 +524,7 @@ export function createWeb(store: Store, opts: { onSmtpSettingsChanged?: () => Pr
         publicUrl: o.publicUrl, oidcIssuer: o.issuer, oidcClientId: o.clientId, oidcClientSecretSet: !!o.clientSecret,
         oidcScopes: o.scopes, oidcAllowed: o.allowed.join(", "), oidcFromEnv: o.fromEnv,
         oidcRedirectUri: redirectUri(req), oidcLastSuccess: store.getSetting("oidc_last_success") ?? null,
-        localLoginDisabled: store.getSetting("local_login_disabled") === "1", localLoginEnabled: localLoginEnabled(),
+        oidcAllowPrivate: o.allowPrivate, localLoginDisabled: store.getSetting("local_login_disabled") === "1", localLoginEnabled: localLoginEnabled(),
         ...(() => { const m = readRoleMapping(store); return { oidcGroupsClaim: m.claim, oidcAdminGroups: m.admin.join(", "), oidcEditorGroups: m.editor.join(", "), oidcViewerGroups: m.viewer.join(", "), oidcDefaultRole: m.defaultRole, oidcLegacyAllAdmin: !m.admin.length && !m.editor.length && !m.viewer.length && m.defaultRole === "admin" }; })(),
       };
     })(),
@@ -520,7 +533,12 @@ export function createWeb(store: Store, opts: { onSmtpSettingsChanged?: () => Pr
   app.put("/api/settings", async (req, reply) => {
     const b = (req.body ?? {}) as SettingsBody;
     const url = (v: string | undefined, what: string) => (v && !/^https?:\/\//.test(v) ? `${what} must start with http:// or https://` : null);
-    const err = url(b.publicUrl, "Public URL") || url(b.oidcIssuer, "OIDC issuer URL");
+    const issuerErr = () => {
+      if (!b.oidcIssuer) return null;
+      try { checkUrl(b.oidcIssuer, typeof b.oidcAllowPrivate === "boolean" ? b.oidcAllowPrivate : oidcSettings().allowPrivate); return null; }
+      catch (e) { return `OIDC issuer URL: ${(e as Error).message}`; }
+    };
+    const err = url(b.publicUrl, "Public URL") || url(b.oidcIssuer, "OIDC issuer URL") || issuerErr();
     if (err) return reply.code(400).send({ error: err });
     const text: [keyof SettingsBody, string][] = [["publicUrl", "public_url"], ["oidcIssuer", "oidc_issuer"], ["oidcClientId", "oidc_client_id"], ["oidcScopes", "oidc_scopes"], ["oidcAllowed", "oidc_allowed"]];
     let oidcChanged = false;
@@ -531,6 +549,7 @@ export function createWeb(store: Store, opts: { onSmtpSettingsChanged?: () => Pr
       if (v.trim()) store.setSetting(k, v.trim()); else store.deleteSetting(k);
     }
     if (typeof b.oidcClientSecret === "string" && b.oidcClientSecret) { store.setSecretSetting("oidc_client_secret", b.oidcClientSecret); oidcChanged = true; }
+    if (typeof b.oidcAllowPrivate === "boolean") { store.setSetting("oidc_allow_private", b.oidcAllowPrivate ? "1" : "0"); oidcChanged = true; }
     if (oidcChanged) oidc.reset();
     const changed: string[] = [];
     const mapKeys: [keyof SettingsBody, string][] = [["oidcGroupsClaim", "oidc_groups_claim"], ["oidcAdminGroups", "oidc_admin_groups"], ["oidcEditorGroups", "oidc_editor_groups"], ["oidcViewerGroups", "oidc_viewer_groups"], ["oidcDefaultRole", "oidc_default_role"]];
@@ -593,6 +612,7 @@ export function createWeb(store: Store, opts: { onSmtpSettingsChanged?: () => Pr
     if (smtpChanged) changed.push("smtp");
     if (b.gotifyUrl !== undefined) changed.push("gotify_url");
     if (b.limits !== undefined) changed.push("limits");
+    if (typeof b.oidcAllowPrivate === "boolean") changed.push("oidc_allow_private");
     if (b.localLoginDisabled !== undefined) changed.push("local_login_disabled");
     audit(req, "settings.updated", "settings", [...new Set(changed)].join(", ") || "no changes");
     if (smtpChanged && opts.onSmtpSettingsChanged) await opts.onSmtpSettingsChanged();

@@ -1013,6 +1013,7 @@ SETTINGS.auth = async (s) => {
       ${sField("Client ID", t("oidcClientId", s.oidcClientId, "", 'autocomplete="off"'), "Copied from the provider.")}
       ${sField("Client secret", `<input name="oidcClientSecret" type="password" autocomplete="new-password" placeholder="${s.oidcClientSecretSet ? "stored — leave blank to keep" : "not set"}">`, "Encrypted at rest and never shown again.")}
       ${sField("Who may sign in", t("oidcAllowed", s.oidcAllowed, "blank = anyone the provider lets in"), "Comma-separated emails or group names.", "anyone")}
+      ${sCheck("oidcAllowPrivate", s.oidcAllowPrivate, "Allow private issuer", "Turn on if your provider is on your own network (for example it resolves to 192.168.x.x or 10.x.x.x) or uses http://. Left off, MailBeacon only contacts public https:// addresses, so this form can't be used to reach machines inside your network. Cloud metadata addresses are always refused.", "off")}
       ${sCheck("localLoginDisabled", s.localLoginDisabled, "Turn off password sign-in", s.oidcLastSuccess ? `Only SSO can be used. Last SSO sign-in ${fmtDate(s.oidcLastSuccess)}.` : "Needs one successful SSO sign-in first, so you can't lock yourself out.", "off")}
       ${adv(sField("Scopes", t("oidcScopes", s.oidcScopes, "openid profile email"), "What MailBeacon asks the provider for. Authentik sends groups with profile.", "openid profile email"), "c1")}
       </form>`, `<button class="btn" type="button" id="oidcTest">Test OIDC</button>${testOut("oidcTestOut")}${saveFoot("oidcForm")}`, "Let people sign in with Authentik, Keycloak, Authelia or another OpenID Connect provider.")}
@@ -1024,13 +1025,13 @@ SETTINGS.auth = async (s) => {
       ${sField("People in none of these groups", `<select name="oidcDefaultRole">${[["none", "Refuse sign-in"], ["viewer", "Viewer"], ["editor", "Editor"], ["admin", "Admin"]].map(([v, l]) => `<option value="${v}" ${v === s.oidcDefaultRole ? "selected" : ""}>${l}</option>`).join("")}</select>`, "")}
       ${adv(sField("Groups claim", t("oidcGroupsClaim", s.oidcGroupsClaim, "groups"), "Name of the token field listing the user's groups.", "groups"), "c1")}
       </form>`, saveFoot("mapForm"), "Sets each SSO user's role from their groups at every sign-in. The highest match wins; the last admin is never demoted.")}`;
-  $("#oidcForm").addEventListener("submit", run(async (e) => { const f = e.target; await saveSettings({ oidcIssuer: f.oidcIssuer.value, oidcClientId: f.oidcClientId.value, ...(f.oidcClientSecret.value ? { oidcClientSecret: f.oidcClientSecret.value } : {}), oidcScopes: f.oidcScopes.value, oidcAllowed: f.oidcAllowed.value, localLoginDisabled: f.localLoginDisabled.checked }, "SSO settings saved"); route(); }));
+  $("#oidcForm").addEventListener("submit", run(async (e) => { const f = e.target; await saveSettings({ oidcIssuer: f.oidcIssuer.value, oidcClientId: f.oidcClientId.value, ...(f.oidcClientSecret.value ? { oidcClientSecret: f.oidcClientSecret.value } : {}), oidcScopes: f.oidcScopes.value, oidcAllowed: f.oidcAllowed.value, oidcAllowPrivate: f.oidcAllowPrivate.checked, localLoginDisabled: f.localLoginDisabled.checked }, "SSO settings saved"); route(); }));
   $("#mapForm").addEventListener("submit", run(async (e) => { const f = e.target; await saveSettings(Object.fromEntries(["oidcGroupsClaim", "oidcAdminGroups", "oidcEditorGroups", "oidcViewerGroups", "oidcDefaultRole"].map((k) => [k, f[k].value])), "Role mapping saved"); route(); }));
   $("#oidcTest").addEventListener("click", run(async () => {
     const issuer = $("#oidcForm").oidcIssuer.value.trim();
     if (!issuer) return showTest("oidcTestOut", false, "Enter an issuer URL first");
     $("#oidcTestOut").innerHTML = '<span class="spinner" aria-hidden="true"></span> Contacting provider…';
-    const r = await api("POST", "/api/oidc/test", { issuer });
+    const r = await api("POST", "/api/oidc/test", { issuer, allowPrivate: $("#oidcForm").oidcAllowPrivate.checked });
     showTest("oidcTestOut", r.ok, r.ok ? `Provider found (${r.ms} ms). Sign in once to finish checking the client.` : esc(r.error));
   }));
 };

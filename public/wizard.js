@@ -291,12 +291,14 @@ WIZ.oidc = async () => {
       <div class="full">${field("Issuer URL *", `<input name="issuer" type="url" required value="${esc(s.oidcIssuer)}" placeholder="https://auth.example.com/application/o/mailbeacon/">`)}</div>
       ${field("Client ID *", `<input name="cid" required value="${esc(s.oidcClientId)}" autocomplete="off">`)}
       ${field("Client secret" + (s.oidcClientSecretSet ? "" : " *"), `<input name="csec" type="password" ${s.oidcClientSecretSet ? "" : "required"} autocomplete="new-password" placeholder="${s.oidcClientSecretSet ? "stored — leave blank to keep" : ""}">`, "Encrypted at rest, never shown again.")}
+      <div class="full"><label class="check"><input type="checkbox" name="priv" ${s.oidcAllowPrivate ? "checked" : ""}> Allow private issuer</label>
+        <span class="help">Tick this if your provider is on your own network, for example a host name that resolves to a 192.168.x.x or 10.x.x.x address, or an http:// address. Otherwise only public https:// issuers are contacted.</span></div>
       <div class="full">${field("Public URL of MailBeacon", `<input name="pub" type="url" value="${esc(s.publicUrl)}" placeholder="https://mailbeacon.example.com">`, "How browsers reach this instance; used for the redirect URI.")}</div>
       <div class="full help">Role mapping from groups is in Settings › Sign-in and SSO. Password sign-in stays on until one SSO sign-in has worked.</div>
     </form>`, wizNav({ skip: "Skip", next: "Save and continue" }));
   const f = $("#wForm");
   f.addEventListener("submit", run(async () => {
-    await api("PUT", "/api/settings", { oidcIssuer: f.issuer.value.trim(), oidcClientId: f.cid.value.trim(), ...(f.csec.value ? { oidcClientSecret: f.csec.value } : {}), ...(f.pub.value ? { publicUrl: f.pub.value.trim() } : {}) });
+    await api("PUT", "/api/settings", { oidcIssuer: f.issuer.value.trim(), oidcAllowPrivate: f.priv.checked, oidcClientId: f.cid.value.trim(), ...(f.csec.value ? { oidcClientSecret: f.csec.value } : {}), ...(f.pub.value ? { publicUrl: f.pub.value.trim() } : {}) });
     W.s = await api("GET", "/api/settings"); mark("oidc"); toast("Single sign-on saved"); wizGo(1);
   }));
 };

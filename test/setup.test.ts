@@ -118,6 +118,12 @@ describe("first-run wizard lock and 5 MB avatars", () => {
       port = (srv.address() as { port: number }).port;
       try {
         expect((await req("ed", "POST", "/api/oidc/test", { issuer: `http://127.0.0.1:${port}/good` })).status).toBe(403);
+        // private issuers are refused unless allowed
+        const refused = (await req("admin", "POST", "/api/oidc/test", { issuer: `http://127.0.0.1:${port}/good` }));
+        expect(refused.status).toBe(400);
+        expect(refused.body.error).toMatch(/https/);
+        expect((await req("admin", "POST", "/api/oidc/test", { issuer: `https://127.0.0.1:${port}/good` })).body.error).toMatch(/private or local/);
+        expect((await req("admin", "PUT", "/api/settings", { oidcAllowPrivate: true })).status).toBe(200);
         expect((await req("admin", "POST", "/api/oidc/test", { issuer: `http://127.0.0.1:${port}/good` })).body).toMatchObject({ ok: true, issuerMatches: true });
         const bad = (await req("admin", "POST", "/api/oidc/test", { issuer: `http://127.0.0.1:${port}/bad` })).body;
         expect(bad.ok).toBe(false); expect(bad.missing).toContain("token_endpoint");
