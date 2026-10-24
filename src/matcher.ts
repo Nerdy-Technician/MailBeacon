@@ -64,3 +64,29 @@ export function canAcceptRecipient(routes: Route[], sender: string, rcpt: string
   if (matchRoute(routes, { sender, recipients: [rcpt] })) return true;
   return routes.some((r) => r.enabled && r.matchType === "subject");
 }
+
+export interface RouteTrace { id: number; name: string; matchType: MatchType; enabled: boolean; matches: boolean | null; note?: string }
+export interface Preview { accepted: boolean; stage: "rcpt" | "data" | null; route: { id: number; name: string } | null; reason: string; trace: RouteTrace[] }
+
+/**
+ * Explain what MailBeacon would do with a message, without sending anything: which route wins,
+ * and if nothing matches, whether it is refused at RCPT TO or after DATA (subject routes).
+ */
+export function previewRoute(routes: Route[], env: { sender: string; recipients: string[]; subject: string }): Preview {
+  const sorted = [...routes].sort((a, b) => a.order - b.order || a.id - b.id);
+  const winner = matchRoute(routes, env, { includeSubject: true });
+  let past = false;
+  const trace: RouteTrace[] = sorted.map((r) => {
+    const t: RouteTrace = { id: r.id, name: r.name, matchType: r.matchType, enabled: r.enabled, matches: null };
+    if (!r.enabled) { t.note = "disabled"; return t; }
+    if (past) { t.note = "not checked: an earlier route matched"; return t; }
+    t.matches = matchRoute([r], env, { includeSubject: true }) === r;
+    if (winner && r.id === winner.id) { past = true; t.note = "first match wins"; }
+    return t;
+  });
+  if (winner) return { accepted: true, stage: null, route: { id: winner.id, name: winner.name }, reason: `delivered by route "${winner.name}"`, trace };
+  const rcptOk = env.recipients.length > 0 && env.recipients.every((a) => canAcceptRecipient(routes, env.sender, a));
+  return rcptOk
+    ? { accepted: false, stage: "data", route: null, reason: "accepted at RCPT TO (a subject route exists) but rejected with 550 after DATA: no route matches", trace }
+    : { accepted: false, stage: "rcpt", route: null, reason: "rejected with 550 at RCPT TO: no route matches", trace };
+}

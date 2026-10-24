@@ -171,3 +171,69 @@ describe("OIDC login and multi-target routes", () => {
     expect(ntfyHits.at(-1)!.body).toMatchObject({ title: "Scrub done", message: "0 errors" });
   });
 });
+
+describe("OIDC group-to-role mapping (Authentik style) and picture claim", () => {
+  let who: Record<string, unknown> = {};
+  const idp = mockIdp(() => who);
+  let app: Awaited<ReturnType<typeof start>>;
+  const smtpPort = 28250 + Math.floor(Math.random() * 500);
+  const webPort = smtpPort + 1000;
+  const base = `http://127.0.0.1:${webPort}`;
+  const web = (p: string, init: RequestInit = {}) => fetch(base + p, { redirect: "manual", ...init });
+  let admin = "";
+  const j = (method: string, body?: unknown, cookie = admin) => ({
+    method, headers: { "X-MailBeacon": "1", cookie, ...(body ? { "Content-Type": "application/json" } : {}) }, body: body ? JSON.stringify(body) : undefined,
+  });
+  const sso = async () => {
+    const r1 = await web("/api/oidc/login");
+    const stateCookie = (r1.headers.get("set-cookie") ?? "").split(";")[0];
+    const r2 = await fetch(r1.headers.get("location")!, { redirect: "manual" });
+    const cb = new URL(r2.headers.get("location")!);
+    const r3 = await web(cb.pathname + cb.search, { headers: { cookie: stateCookie } });
+    const sess = (r3.headers.getSetCookie().find((c) => c.startsWith("mb_session=")) ?? "").split(";")[0];
+    return { location: r3.headers.get("location"), sess };
+  };
+  const meOf = async (sess: string) => (await web("/api/me", { headers: { cookie: sess } })).json();
+
+  beforeAll(async () => {
+    await idp.listen();
+    app = await start({ dataDir: fs.mkdtempSync(path.join(os.tmpdir(), "mb-oidc2-")), smtpPort, webPort, host: "127.0.0.1", maxSizeBytes: 64 * 1024, smtpHostname: "test", secret: "oidc2" });
+    const r = await web("/api/setup", j("POST", { username: "owner", password: "longpassword" }, ""));
+    admin = (r.headers.get("set-cookie") ?? "").split(";")[0];
+    expect((await web("/api/settings", j("PUT", { oidcIssuer: idp.issuer, oidcClientId: "mailbeacon", oidcClientSecret: "shh", publicUrl: base,
+      oidcGroupsClaim: "groups", oidcAdminGroups: "mailbeacon-admins", oidcEditorGroups: "mailbeacon-editors", oidcViewerGroups: "mailbeacon-viewers", oidcDefaultRole: "none" }))).status).toBe(200);
+  });
+  afterAll(async () => { await app.stop(); idp.srv.close(); });
+
+  it("maps groups to roles, highest wins", async () => {
+    who = { sub: "s-ed", preferred_username: "alice", email: "alice@example.com", groups: ["mailbeacon-viewers", "mailbeacon-editors"] };
+    const { sess } = await sso();
+    expect(await meOf(sess)).toMatchObject({ username: "alice", role: "editor", sso: true });
+    who = { sub: "s-vi", preferred_username: "bob", groups: ["mailbeacon-viewers"] };
+    expect(await meOf((await sso()).sess)).toMatchObject({ username: "bob", role: "viewer" });
+  });
+  it("refuses users in no mapped group when the default role is none", async () => {
+    who = { sub: "s-x", preferred_username: "mallory", groups: ["staff"] };
+    const r = await sso();
+    expect(r.location).toMatch(/login_error=/);
+    expect(r.sess).toBe("");
+  });
+  it("follows group changes on the next login, matched by subject not email", async () => {
+    who = { sub: "s-ed", preferred_username: "alice", email: "changed@example.com", groups: ["mailbeacon-admins"] };
+    expect((await meOf((await sso()).sess)).role).toBe("admin");
+    who = { sub: "s-other", preferred_username: "alice", email: "alice@example.com", groups: ["mailbeacon-viewers"] };
+    const m = await meOf((await sso()).sess);
+    expect(m.username).toBe("alice-2"); // a different subject never takes over an account
+  });
+  it("uses the OIDC picture claim as the default avatar and lets the user switch", async () => {
+    who = { sub: "s-pic", preferred_username: "carol", name: "Carol Danvers", email: "carol@example.com", picture: "https://auth.example.com/media/carol.png", groups: ["mailbeacon-viewers"] };
+    const { sess } = await sso();
+    const m = await meOf(sess);
+    expect(m.avatar).toMatchObject({ source: "oidc", url: "https://auth.example.com/media/carol.png", initials: "CD" });
+    expect(m.avatar.available).toEqual(["oidc", "gravatar", "initials"]);
+    const r = await web("/api/me", { method: "PUT", headers: { "X-MailBeacon": "1", cookie: sess, "Content-Type": "application/json" }, body: JSON.stringify({ avatarSource: "gravatar" }) });
+    expect((await r.json()).avatar.url).toMatch(/^https:\/\/gravatar\.com\/avatar\/[a-f0-9]{64}\?s=96&d=404$/);
+    who = { ...who, picture: "javascript:alert(1)" };
+    expect((await meOf((await sso()).sess)).avatar.available).not.toContain("oidc");
+  });
+});

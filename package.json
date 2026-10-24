@@ -1,7 +1,7 @@
 {
   "name": "mailbeacon",
-  "version": "0.1.0",
-  "description": "Fake SMTP server that turns incoming email into Gotify, ntfy, Pushover or Apprise notifications",
+  "version": "0.3.0",
+  "description": "Fake SMTP server that forwards incoming email to Gotify, ntfy, Pushover, Discord, Slack, Telegram, Apprise and webhooks",
   "type": "module",
   "license": "MIT",
   "engines": {
@@ -32,11 +32,14 @@
     "vitest": "^5.0.5"
   },
   "dependencies": {
+    "@fastify/swagger": "^9.9.2",
+    "@fastify/swagger-ui": "^6.1.2",
     "better-sqlite3": "^13.0.3",
     "fastify": "^5.12.7",
     "mailparser": "^3.9.40",
     "openid-client": "^6.8.8",
     "selfsigned": "^5.5.0",
+    "sharp": "^0.35.5",
     "smtp-server": "^3.19.23",
     "turndown": "^7.2.4"
   }

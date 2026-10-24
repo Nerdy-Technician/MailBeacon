@@ -99,12 +99,37 @@ describe("DB migration", () => {
     const s = new Store(dir, key);
     const [rt] = s.listRoutes();
     expect(rt).toMatchObject({ name: "legacy", targetType: "gotify", gotifyToken: "LEGACY", target: {}, secrets: {} });
-    expect(s.db.pragma("user_version", { simple: true })).toBe(1);
-    s.saveRoute({ ...rt, targetType: "pushover", secrets: { pushoverToken: "PT", pushoverUser: "PU" } });
+    expect(s.db.pragma("user_version", { simple: true })).toBe(4);
+    s.saveRoute({ ...rt, targetType: "pushover", secrets: { pushoverToken: "pt-plaintext-token-123", pushoverUser: "pu-plaintext-user-456" } });
     const raw = s.db.prepare("SELECT target_secret FROM routes").get() as { target_secret: string };
-    expect(raw.target_secret).not.toContain("PT");
-    expect(s.getRoute(rt.id)!.secrets).toEqual({ pushoverToken: "PT", pushoverUser: "PU" });
+    expect(raw.target_secret).not.toContain("pt-plaintext-token-123");
+    expect(raw.target_secret).not.toContain("pu-plaintext-user-456");
+    expect(s.getRoute(rt.id)!.secrets).toEqual({ pushoverToken: "pt-plaintext-token-123", pushoverUser: "pu-plaintext-user-456" });
     s.close();
     new Store(dir, key).close(); // re-opening is a no-op
+  });
+});
+
+describe("0.2.0 -> 0.3.0 migration", () => {
+  it("turns the single admin password into user admin who owns everything", async () => {
+    const { hashPassword } = await import("../src/crypto.js");
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mb-mig3-"));
+    const key = Buffer.alloc(32, 7);
+    const s0 = new Store(dir, key);
+    s0.db.exec("DELETE FROM users; DELETE FROM audit;");
+    s0.db.exec("ALTER TABLE routes DROP COLUMN owner_id; ALTER TABLE messages DROP COLUMN owner_id;");
+    s0.db.exec("DROP TABLE users;");
+    s0.setSetting("admin_hash", hashPassword("legacypassword"));
+    s0.db.prepare("INSERT INTO routes(name,match_type,pattern,gotify_token) VALUES('old','recipient','a@b',?)").run(encrypt("T", key));
+    s0.db.pragma("user_version = 2");
+    s0.close();
+    const s = new Store(dir, key);
+    expect(s.db.pragma("user_version", { simple: true })).toBe(4);
+    const u = s.checkLogin("admin", "legacypassword")!;
+    expect(u).toMatchObject({ username: "admin", role: "admin" });
+    expect(s.checkLogin("admin", "wrong")).toBeUndefined();
+    expect(s.listRoutes()[0].ownerId).toBe(u.id);
+    expect(s.queryAudit().items.map((a) => a.action)).toContain("user.migrated");
+    s.close();
   });
 });
