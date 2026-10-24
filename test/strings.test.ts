@@ -11,6 +11,7 @@ describe("linear-time trims", () => {
   it("extraction names cannot touch the prototype", () => {
     const out = extractValues([{ kind: "regex", field: "subject", pattern: "(?<__proto__>\\w+)" } as never], "polluted", "");
     expect(({} as Record<string, unknown>).polluted).toBeUndefined();
-    expect(Object.getPrototypeOf(out)).toBeNull();
+    expect(Object.getPrototypeOf(out)).toBe(Object.prototype);
+    expect(Object.keys(out)).toContain("__proto__");
   });
 });

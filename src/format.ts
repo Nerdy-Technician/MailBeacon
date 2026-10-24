@@ -97,19 +97,19 @@ export const extractNames = (r: ExtractRule): string[] => {
  * so {{name|fallback}} works. Earlier rules win when two produce the same name. Values are trimmed and capped at 500 chars.
  */
 export function extractValues(rules: ExtractRule[] | undefined, subject: string, body: string): Record<string, string> {
-  const out: Record<string, string> = Object.create(null) as Record<string, string>;
+  const out = new Map<string, string>(); // a Map, so names like __proto__ are plain keys
   for (const r of rules ?? []) {
-    for (const n of extractNames(r)) out[n] ??= "";
+    for (const n of extractNames(r)) if (!out.has(n)) out.set(n, "");
     const hay = (r.field === "subject" ? subject : r.field === "body" ? body : `${subject}\n${body}`).slice(0, 64000);
     const re = trySafe(r.kind === "field" ? `^[ \\t*•-]*${escRe(r.pattern.trim())}[ \\t]*[:=][ \\t]*(.+?)[ \\t]*$` : r.pattern, { ignoreCase: true, multiline: true });
     if (!re) continue;
     const m = re.exec(hay);
     if (!m) continue;
-    const put = (k: string, v: string | undefined) => { if (v !== undefined && !out[k]) out[k] = v.trim().slice(0, 500); };
+    const put = (k: string, v: string | undefined) => { if (v !== undefined && !out.get(k)) out.set(k, v.trim().slice(0, 500)); };
     if (r.kind === "regex" && Object.keys(m.named).length) for (const [k, v] of Object.entries(m.named)) put(k.toLowerCase(), v);
     else { const n = extractNames(r)[0]; if (n) put(n, m.groups[0] ?? m.text); }
   }
-  return out;
+  return Object.fromEntries(out);
 }
 
 const HM = /^([01]\d|2[0-3]):([0-5]\d)$/;
