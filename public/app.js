@@ -104,6 +104,8 @@ const emptyState = (title, text = "", action = "") => `<div class="empty"><div c
 const loadingState = () => '<div class="panel" aria-busy="true"><div class="empty"><span class="spinner" aria-hidden="true"></span><div class="et">Loading…</div></div></div>';
 
 let ME = null, STATUS = null;
+function setStatus(s) { STATUS = s; ME = s ? s.user : null; }
+window.setStatus = setStatus; // used by wizard.js
 const tz = () => ME?.prefs?.timezone || undefined;
 const fmtTime = (iso) => iso ? new Intl.DateTimeFormat("en-GB", { timeZone: tz(), hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(new Date(iso)) : "";
 const fmtDate = (iso) => iso ? new Intl.DateTimeFormat("en-GB", { timeZone: tz(), day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(iso)) : "";

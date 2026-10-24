@@ -30,6 +30,7 @@ import { lastSelfTest, runSelfTest } from "./selftest.js";
 import { ingest, ingestParsed } from "./smtp.js";
 import { CALLBACK_PATH, isAllowed, OidcLogin, oidcEnabled, readOidcSettings } from "./oidc.js";
 import { SECRET_KEYS, sendToTarget, TARGET_TYPES, validateTarget, type TargetConfig, type TargetSecrets, type TargetType, type TargetRoute } from "./targets.js";
+import { stripSlashes } from "./strings.js";
 
 const SESSION_TTL = 12 * 3600 * 1000;
 const publicDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../public");
@@ -436,14 +437,14 @@ export function createWeb(store: Store, opts: { onSmtpSettingsChanged?: () => Pr
     const b = (req.body ?? {}) as { issuer?: string };
     const issuer = String(b.issuer || oidcSettings().issuer || "").trim();
     if (!/^https?:\/\/[^\s]+$/.test(issuer)) return reply.code(400).send({ error: "issuer must be an http:// or https:// URL" });
-    const url = issuer.replace(/\/+$/, "") + "/.well-known/openid-configuration";
+    const url = stripSlashes(issuer) + "/.well-known/openid-configuration";
     const t0 = Date.now();
     try {
       const res = await fetch(url, { signal: AbortSignal.timeout(6000), redirect: "follow", headers: { Accept: "application/json" } });
       if (!res.ok) return { ok: false, error: `discovery document answered HTTP ${res.status}`, url };
       const d = (await res.json()) as Record<string, unknown>;
       const missing = ["authorization_endpoint", "token_endpoint", "jwks_uri"].filter((k) => typeof d[k] !== "string");
-      const same = String(d.issuer ?? "").replace(/\/+$/, "") === issuer.replace(/\/+$/, "");
+      const same = stripSlashes(String(d.issuer ?? "")) === stripSlashes(issuer);
       const ok = same && !missing.length;
       audit(req, "oidc.tested", null, ok ? "ok" : "problem");
       return { ok, url, ms: Date.now() - t0, issuer: String(d.issuer ?? ""), issuerMatches: same, missing,
@@ -1055,7 +1056,7 @@ export function createWeb(store: Store, opts: { onSmtpSettingsChanged?: () => Pr
   const apiLimiter = new RateLimiter();
   const scalar = (v: unknown) => typeof v === "string" || typeof v === "number" || typeof v === "boolean";
   /** Flatten JSON into template variables: {"host":{"name":"x"}} -> host_name=x. Depth 3, 50 keys, 500 chars each. */
-  const flatten = (v: unknown, prefix = "", depth = 0, out: Record<string, string> = {}) => {
+  const flatten = (v: unknown, prefix = "", depth = 0, out: Record<string, string> = Object.create(null) as Record<string, string>) => {
     if (!v || typeof v !== "object" || depth > 3) return out;
     for (const [k0, x] of Object.entries(v as Record<string, unknown>)) {
       if (Object.keys(out).length >= 50) break;
@@ -1131,7 +1132,7 @@ export function createWeb(store: Store, opts: { onSmtpSettingsChanged?: () => Pr
     }
     const subject = String(sm.subject ?? "[PVE] vzdump backup failed on pve1"), body = String(sm.body ?? "Backup of VM 101 failed: storage full.");
     const extracted = extractValues(b.extract, subject, body);
-    const extra = { ...flatten(b.vars ?? {}), ...Object.fromEntries(Object.entries(extracted).filter(([, v]) => v)) };
+    const extra: Record<string, string> = Object.assign(Object.create(null) as Record<string, string>, flatten(b.vars ?? {}), Object.fromEntries(Object.entries(extracted).filter(([, v]) => v)));
     for (const k of Object.keys(extracted)) if (!(k in extra)) extra[k] = "";
     const priority = pickPriority(b.priorityRules, subject, body, extra);
     const vars = { subject, from: String(sm.from ?? "proxmox@example.com"), to: String(sm.to ?? "alerts@mailbeacon.local"), body, route: String(sm.route ?? "Example route"), date: new Date(), attachments: Array.isArray(sm.attachments) ? sm.attachments.map(String) : [], priority, extra };

@@ -1,5 +1,6 @@
 import type { Store } from "./db.js";
 import { isDryRun } from "./delivery.js";
+import { stripSlashes } from "./strings.js";
 
 /**
  * /healthz: SMTP listener, database and destination reachability.
@@ -13,7 +14,7 @@ export interface ProbeResult { key: string; name: string; type: string; ok: bool
 export interface DestCheck { ok: boolean; total: number; reachable: number; unreachable: number; skipped: number; checkedAt: string | null; reason?: string; items: ProbeResult[] }
 
 const origin = (u: string | undefined | null) => { try { return u ? new URL(u).origin : null; } catch { return null; } };
-export const gotifyBase = (u: string) => u.replace(/\/+$/, "");
+export const gotifyBase = (u: string) => stripSlashes(u);
 
 /** Where to probe for each service: a base URL or a public health path, never anything carrying a secret. */
 export function probeUrl(type: string, config: Record<string, unknown>, globalGotify: string): string | null {

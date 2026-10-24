@@ -15,7 +15,7 @@ export default tseslint.config(
   },
   {
     files: ["public/wizard.js"],
-    languageOptions: { globals: Object.fromEntries(["$", "$$", "esc", "api", "run", "toast", "field", "fieldInput", "readFields", "MATCH", "ME", "STATUS", "applyTheme", "boot", "confirmDlg", "destTypes", "emptyState", "isAdmin", "icon", "SERVICE_ICON", "SERVICE_LIST", "servicePicker", "brandHtml", "appName"].map((g) => [g, "writable"])) },
+    languageOptions: { globals: Object.fromEntries(["$", "$$", "esc", "api", "run", "toast", "field", "fieldInput", "readFields", "MATCH", "ME", "STATUS", "setStatus", "applyTheme", "boot", "confirmDlg", "destTypes", "emptyState", "isAdmin", "icon", "SERVICE_ICON", "SERVICE_LIST", "servicePicker", "brandHtml", "appName"].map((g) => [g, "writable"])) },
     rules: { "@typescript-eslint/no-unused-vars": ["error", { varsIgnorePattern: "^(startWizard|validateForm)$" }] },
   },
 );

@@ -107,6 +107,7 @@ const WSTEPS = [
   ["account", "Admin account"], ["smtp", "SMTP"], ["dest", "First destination"], ["route", "First route"], ["oidc", "Single sign-on", "optional"], ["done", "Finish"],
 ];
 let W = null;
+window.startWizard = startWizard;
 async function startWizard({ fresh }) {
   if (!fresh && !isAdmin()) return toast("Only admins can run the setup wizard.", true);
   W = { fresh, i: fresh ? 0 : 1, done: new Set(fresh ? [] : ["account"]), skipped: new Set(), destId: null, routeId: null, dryRun: false, s: null, types: null };
@@ -177,8 +178,7 @@ WIZ.account = async () => {
     try { await api("POST", "/api/setup", { username: f.username.value.trim(), password: f.password.value }); }
     catch (err) { $("#wErr").textContent = err.message === "already set up" ? "This instance already has users. Sign in instead." : err.message; if (err.message === "already set up") setTimeout(() => boot(), 1500); return; }
     f.password.value = f.again.value = "";
-    STATUS = await fetch("/api/status").then((r) => r.json());
-    ME = STATUS.user; applyTheme();
+    setStatus(await fetch("/api/status").then((r) => r.json())); applyTheme();
     mark("account"); toast("Admin account created"); wizGo(1);
   }));
 };

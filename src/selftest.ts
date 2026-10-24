@@ -1,6 +1,7 @@
 import type { Store } from "./db.js";
 import { isDryRun } from "./delivery.js";
 import { validateTarget } from "./targets.js";
+import { stripSlashes } from "./strings.js";
 
 export interface SelfTestCheck { name: string; ok: boolean; detail: string }
 export interface SelfTestResult { at: string; ok: boolean; dryRun: boolean; checks: SelfTestCheck[] }
@@ -21,7 +22,7 @@ export async function runSelfTest(store: Store, timeoutMs = 5000): Promise<SelfT
   const routes = store.listRoutes().filter((r) => r.enabled && r.targetType === "gotify");
   const urls = new Map<string, string[]>();
   for (const r of routes) {
-    const u = (r.gotifyUrl || store.gotifyUrl).replace(/\/+$/, "");
+    const u = stripSlashes(r.gotifyUrl || store.gotifyUrl);
     if (!u) { checks.push({ name: `route "${r.name}"`, ok: false, detail: "no Gotify URL (set one in Settings or on the route)" }); continue; }
     urls.set(u, [...(urls.get(u) ?? []), r.name]);
     checks.push(r.gotifyToken

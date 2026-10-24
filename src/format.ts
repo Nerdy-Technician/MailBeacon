@@ -1,5 +1,6 @@
 /** Per-route message formatting, priority rules, quiet hours and digests. */
 import { patternError, trySafe } from "./saferegex.js";
+import { trimBoth } from "./strings.js";
 
 /** field: subject, body, any (both), or "var:<name>" to test an extracted value. */
 export interface PriorityRule { field: string; pattern: string; priority: number }
@@ -84,7 +85,7 @@ export function pickPriority(rules: PriorityRule[] | undefined, subject: string,
 
 export const VAR_NAME = /^[a-z_][a-z0-9_]{0,31}$/;
 const escRe = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-const slug = (x: string) => x.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").replace(/^(\d)/, "_$1").slice(0, 32);
+const slug = (x: string) => trimBoth(x.toLowerCase().replace(/[^a-z0-9]+/g, "_"), "_").replace(/^(\d)/, "_$1").slice(0, 32);
 /** Name a rule will produce (for "field" rules without a name, the label in snake_case). */
 export const extractNames = (r: ExtractRule): string[] => {
   if (r.kind === "field") return [r.name || slug(r.pattern)].filter(Boolean);
@@ -96,7 +97,7 @@ export const extractNames = (r: ExtractRule): string[] => {
  * so {{name|fallback}} works. Earlier rules win when two produce the same name. Values are trimmed and capped at 500 chars.
  */
 export function extractValues(rules: ExtractRule[] | undefined, subject: string, body: string): Record<string, string> {
-  const out: Record<string, string> = {};
+  const out: Record<string, string> = Object.create(null) as Record<string, string>;
   for (const r of rules ?? []) {
     for (const n of extractNames(r)) out[n] ??= "";
     const hay = (r.field === "subject" ? subject : r.field === "body" ? body : `${subject}\n${body}`).slice(0, 64000);

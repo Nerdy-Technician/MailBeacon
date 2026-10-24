@@ -1,4 +1,5 @@
 import { sendGotify } from "./gotify.js";
+import { stripSlashes } from "./strings.js";
 
 export type TargetType = "gotify" | "ntfy" | "pushover" | "apprise" | "discord" | "slack" | "telegram" | "webhook";
 export const TARGET_TYPES: TargetType[] = ["gotify", "ntfy", "pushover", "apprise", "discord", "slack", "telegram", "webhook"];
@@ -86,7 +87,7 @@ export interface TargetRoute {
 }
 
 const clamp = (n: unknown, lo: number, hi: number, d: number) => { const v = Number(n); return Number.isFinite(v) ? Math.max(lo, Math.min(hi, Math.round(v))) : d; };
-const trim = (u: string) => u.replace(/\/+$/, "");
+const trim = (u: string) => stripSlashes(u);
 const isHttp = (u?: string) => !!u && /^https?:\/\//.test(u);
 const markdownToHtml = (s: string) => s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]!)
   .replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/\[(.+?)\]\((https?:[^)]+)\)/g, '<a href="$2">$1</a>');

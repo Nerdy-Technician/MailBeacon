@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - User-supplied regular expressions (route patterns, priority and extraction rules) now run on a linear-time RE2 engine, so a pattern such as `(a+)+$` can no longer stall mail handling. Patterns are capped at 1000 characters; lookarounds and backreferences are rejected with a clear message when saved.
 - Every HTTP route is rate-limited per client (`MAILBEACON_HTTP_RATE_LIMIT`, default 1200 a minute; 429 with Retry-After), and password logins to 20 a minute.
+- Extraction rule names and preview variables live in prototype-less objects, so a name like `__proto__` cannot change object behaviour. URL and name trimming no longer uses backtracking regexes.
 - The generated TLS key/certificate and `secret.key` are created atomically and never overwrite an existing file.
 - Dependency updates: fast-uri and nodemailer (npm audit is clean); the image installs Debian security updates on build.
 
