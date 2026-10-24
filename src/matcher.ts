@@ -1,19 +1,25 @@
 import type { MatchType, Route } from "./db.js";
+import { trySafe, type SafeRegex } from "./saferegex.js";
 
 export interface Envelope { sender: string; recipients: string[]; subject?: string }
 
 const norm = (s: string) => s.trim().toLowerCase();
 
-function safeRegex(p: string): RegExp | null {
-  try { return new RegExp(p, "i"); } catch { return null; }
+function safeRegex(p: string): SafeRegex | null {
+  return trySafe(p, { ignoreCase: true });
 }
 
 /** Recipient patterns: exact address, or a glob with * (e.g. *@alerts.local). */
 export function recipientMatches(pattern: string, addr: string): boolean {
   const p = norm(pattern);
   if (!p.includes("*")) return p === norm(addr);
-  const re = new RegExp("^" + p.split("*").map((x) => x.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join(".*") + "$");
-  return re.test(norm(addr));
+  const parts = p.split("*");
+  const a = norm(addr);
+  if (!a.startsWith(parts[0]!) || !a.endsWith(parts[parts.length - 1]!) || a.length < parts[0]!.length + parts[parts.length - 1]!.length) return false;
+  let pos = parts[0]!.length;
+  const end = a.length - parts[parts.length - 1]!.length;
+  for (const mid of parts.slice(1, -1)) { const i = a.indexOf(mid, pos); if (i < 0 || i + mid.length > end) return false; pos = i + mid.length; }
+  return true;
 }
 
 /** Check one pattern against a sample, as the UI's "test this pattern" box does. */

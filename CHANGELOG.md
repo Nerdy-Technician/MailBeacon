@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- User-supplied regular expressions (route patterns, priority and extraction rules) now run on a linear-time RE2 engine, so a pattern such as `(a+)+$` can no longer stall mail handling. Patterns are capped at 1000 characters; lookarounds and backreferences are rejected with a clear message when saved.
+- Every HTTP route is rate-limited per client (`MAILBEACON_HTTP_RATE_LIMIT`, default 1200 a minute; 429 with Retry-After), and password logins to 20 a minute.
+- The generated TLS key/certificate and `secret.key` are created atomically and never overwrite an existing file.
+- Dependency updates: fast-uri and nodemailer (npm audit is clean); the image installs Debian security updates on build.
+
 ### Changed
 
 - **Project automation**: CI on Node 22 and 24 with a multi-arch Docker build and smoke test; CodeQL; Trivy and gitleaks scans reported to code scanning; OpenSSF Scorecard; dependency review, conventional PR titles and release labels on pull requests; Release Drafter with an autolabeler; weekly grouped Dependabot updates with auto-merge for patch and minor versions once CI passes; stale issues and PRs; a labels sync; CODEOWNERS and refreshed issue forms. Every action is pinned to a commit SHA.

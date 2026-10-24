@@ -144,7 +144,7 @@ export function createSmtpServer(store: Store, cfg: Config, limiter = new RateLi
       counters.activeConnections = Math.max(0, counters.activeConnections - 1);
     },
     onAuth(auth, _session, cb) {
-      if (auth.username && auth.password !== undefined && store.checkSmtpUser(auth.username, auth.password)) return cb(null, { user: auth.username });
+      if (auth.username && typeof auth.password === "string" && store.checkSmtpUser(auth.username, auth.password)) return cb(null, { user: auth.username });
       countReject("auth_failed");
       store.log("warn", `SMTP auth failed for "${auth.username ?? ""}"`);
       cb(err(535, "Authentication failed"));

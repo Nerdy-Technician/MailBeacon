@@ -32,12 +32,14 @@
     "vitest": "^5.0.5"
   },
   "dependencies": {
+    "@fastify/rate-limit": "^11.2.1",
     "@fastify/swagger": "^9.9.2",
     "@fastify/swagger-ui": "^6.1.2",
     "better-sqlite3": "^13.0.3",
     "fastify": "^5.12.7",
     "mailparser": "^3.9.40",
     "openid-client": "^6.8.8",
+    "re2js": "^2.9.0",
     "selfsigned": "^5.5.0",
     "sharp": "^0.35.5",
     "smtp-server": "^3.19.23",

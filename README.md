@@ -136,6 +136,7 @@ Almost everything is set in the web UI. Environment variables cover ports, the e
 | `MAILBEACON_OIDC_DEFAULT_ROLE` | `none` | Role for SSO users in no mapped group: `none` (refused), `viewer` or `editor`. |
 | `MAILBEACON_GRAVATAR` | `1` | Set to `0` to never load avatars from gravatar.com. |
 | `MAILBEACON_SCHEDULER_INTERVAL_MS` | `60000` | How often quiet-hours releases and digests are checked. |
+| `MAILBEACON_HTTP_RATE_LIMIT` | `1200` | Requests per minute one client can make to the web UI and API (minimum 60; `/healthz` is never limited). Password logins are capped at 20 a minute on top of the lockout. |
 
 OIDC values set by environment variables override the ones saved in the UI and are shown greyed out there.
 

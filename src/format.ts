@@ -1,4 +1,5 @@
 /** Per-route message formatting, priority rules, quiet hours and digests. */
+import { patternError, trySafe } from "./saferegex.js";
 
 /** field: subject, body, any (both), or "var:<name>" to test an extracted value. */
 export interface PriorityRule { field: string; pattern: string; priority: number }
@@ -73,8 +74,8 @@ export function renderTemplate(tpl: string, v: TemplateVars, tz = "UTC"): string
 /** First matching rule wins; null when none match. Patterns are case-insensitive regexes. */
 export function pickPriority(rules: PriorityRule[] | undefined, subject: string, body: string, extra: Record<string, string> = {}): number | null {
   for (const r of rules ?? []) {
-    let re: RegExp;
-    try { re = new RegExp(r.pattern, "i"); } catch { continue; }
+    const re = trySafe(r.pattern, { ignoreCase: true });
+    if (!re) continue;
     const hay = r.field === "subject" ? subject : r.field === "body" ? body : r.field.startsWith("var:") ? extra[r.field.slice(4).toLowerCase()] ?? "" : `${subject}\n${body}`;
     if (re.test(hay)) return r.priority;
   }
@@ -87,7 +88,7 @@ const slug = (x: string) => x.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(
 /** Name a rule will produce (for "field" rules without a name, the label in snake_case). */
 export const extractNames = (r: ExtractRule): string[] => {
   if (r.kind === "field") return [r.name || slug(r.pattern)].filter(Boolean);
-  const groups = [...r.pattern.matchAll(/\(\?<([A-Za-z_]\w*)>/g)].map((m) => m[1]!.toLowerCase());
+  const groups = [...r.pattern.matchAll(/\(\?P?<([A-Za-z_]\w*)>/g)].map((m) => m[1]!.toLowerCase());
   return groups.length ? groups : r.name ? [r.name] : [];
 };
 /**
@@ -99,13 +100,13 @@ export function extractValues(rules: ExtractRule[] | undefined, subject: string,
   for (const r of rules ?? []) {
     for (const n of extractNames(r)) out[n] ??= "";
     const hay = (r.field === "subject" ? subject : r.field === "body" ? body : `${subject}\n${body}`).slice(0, 64000);
-    let re: RegExp;
-    try { re = r.kind === "field" ? new RegExp(`^[ \\t*•-]*${escRe(r.pattern.trim())}[ \\t]*[:=][ \\t]*(.+?)[ \\t]*$`, "im") : new RegExp(r.pattern, "im"); } catch { continue; }
+    const re = trySafe(r.kind === "field" ? `^[ \\t*•-]*${escRe(r.pattern.trim())}[ \\t]*[:=][ \\t]*(.+?)[ \\t]*$` : r.pattern, { ignoreCase: true, multiline: true });
+    if (!re) continue;
     const m = re.exec(hay);
     if (!m) continue;
     const put = (k: string, v: string | undefined) => { if (v !== undefined && !out[k]) out[k] = v.trim().slice(0, 500); };
-    if (r.kind === "regex" && m.groups && Object.keys(m.groups).length) for (const [k, v] of Object.entries(m.groups)) put(k.toLowerCase(), v);
-    else { const n = extractNames(r)[0]; if (n) put(n, m[1] ?? m[0]); }
+    if (r.kind === "regex" && Object.keys(m.named).length) for (const [k, v] of Object.entries(m.named)) put(k.toLowerCase(), v);
+    else { const n = extractNames(r)[0]; if (n) put(n, m.groups[0] ?? m.text); }
   }
   return out;
 }
@@ -142,7 +143,7 @@ export function validateOptions(o: RouteOptions | undefined): string | null {
     for (const r of o.priorityRules) {
       if (!["subject", "body", "any"].includes(r.field) && !(typeof r.field === "string" && r.field.startsWith("var:") && VAR_NAME.test(r.field.slice(4)))) return "priority rule field must be subject, body, any or var:<extracted name>";
       if (typeof r.pattern !== "string" || !r.pattern || r.pattern.length > 500) return "priority rule pattern is required";
-      try { new RegExp(r.pattern); } catch { return `priority rule pattern is not a valid regex: ${r.pattern}`; }
+      { const err = patternError(r.pattern); if (err) return `priority rule pattern is not a valid regex: ${r.pattern} (${err})`; }
       if (!Number.isInteger(r.priority) || r.priority < 0 || r.priority > 10) return "priority rule priority must be 0-10";
     }
   }
@@ -154,7 +155,7 @@ export function validateOptions(o: RouteOptions | undefined): string | null {
       if (typeof r.pattern !== "string" || !r.pattern.trim() || r.pattern.length > 500) return "extract rule pattern is required (up to 500 characters)";
       if (r.name !== undefined && r.name !== "" && !VAR_NAME.test(r.name)) return `extract name "${r.name}" must be lower-case letters, digits or _ (up to 32)`;
       if (r.kind === "regex") {
-        try { new RegExp(r.pattern); } catch (e) { return `extract regex is not valid: ${(e as Error).message}`; }
+        { const err = patternError(r.pattern); if (err) return `extract regex is not valid: ${err}`; }
         if (!extractNames(r).length) return `extract regex needs a named group like (?<host>\\S+) or a name: ${r.pattern}`;
         for (const n of extractNames(r)) if (!VAR_NAME.test(n)) return `extract group name "${n}" is too long or invalid`;
       } else if (!extractNames(r).length) return `extract field "${r.pattern}" needs a name`;

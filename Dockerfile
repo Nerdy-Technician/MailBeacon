@@ -11,11 +11,12 @@ RUN npm run build && npm prune --omit=dev
 FROM node:22-bookworm-slim
 ARG VERSION=0.3.0
 LABEL org.opencontainers.image.title="MailBeacon" \
-      org.opencontainers.image.description="Fake SMTP server that turns email alerts into Gotify, ntfy, Pushover or Apprise notifications" \
+      org.opencontainers.image.description="SMTP server that turns email alerts into Gotify, ntfy, Pushover, Discord, Slack, Telegram, Apprise and webhook notifications" \
       org.opencontainers.image.source="https://github.com/Nerdy-Technician/MailBeacon" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.version="${VERSION}"
-RUN apt-get update && apt-get install -y --no-install-recommends gosu && rm -rf /var/lib/apt/lists/*
+# Pull in Debian security updates newer than the base image.
+RUN apt-get update && apt-get upgrade -y --no-install-recommends && apt-get install -y --no-install-recommends gosu && rm -rf /var/lib/apt/lists/*
 ENV NODE_ENV=production \
     MAILBEACON_DATA_DIR=/data \
     MAILBEACON_SMTP_PORT=2525 \

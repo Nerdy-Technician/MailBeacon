@@ -8,3 +8,12 @@ coverage/
 *.log
 .DS_Store
 *.tgz
+
+# local state and credentials
+*.db
+*.db-shm
+*.db-wal
+admin-password
+*.pem
+*.tar.gz
+*.bundle

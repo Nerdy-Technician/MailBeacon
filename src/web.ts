@@ -16,6 +16,8 @@ import { extractValues, pickPriority, renderTemplate, TEMPLATE_VARS, validateOpt
 import { simpleParser } from "mailparser";
 import { ROUTE_TEMPLATES } from "./routeTemplates.js";
 import { RateLimiter } from "./limits.js";
+import { patternError } from "./saferegex.js";
+import rateLimit from "@fastify/rate-limit";
 import { readAttachmentLimits, writeAttachmentLimits, type AttachmentLimits } from "./limits.js";
 import { TARGET_FIELDS } from "./targets.js";
 import { matchRoute, previewRoute, testPattern } from "./matcher.js";
@@ -110,7 +112,11 @@ export const gravatarUrl = (email: string) => `https://gravatar.com/avatar/${cry
 const gravatarOn = (store: Store) => process.env.MAILBEACON_GRAVATAR !== "0" && store.getSetting("gravatar") !== "0";
 
 export function createWeb(store: Store, opts: { onSmtpSettingsChanged?: () => Promise<void>; smtpPort?: number; smtpListening?: () => boolean; healthz?: HealthzOpts } = {}): FastifyInstance {
-  const app = Fastify({ logger: false, bodyLimit: 256 * 1024 });
+  const root = Fastify({ logger: false, bodyLimit: 256 * 1024 });
+  // Per-client request limit for every HTTP route (on top of the login lockout and the per-key send limit).
+  const httpLimit = Math.max(60, Number(process.env.MAILBEACON_HTTP_RATE_LIMIT) || 1200);
+  root.register(rateLimit, { global: true, max: httpLimit, timeWindow: "1 minute", allowList: (req) => req.url.startsWith("/healthz") });
+  root.register(async (app) => {
   app.addContentTypeParser(AVATAR_TYPES, { parseAs: "buffer", bodyLimit: AVATAR_MAX_BYTES + 1024 }, (_req, body, done) => done(null, body));
   const sessions = new Map<string, { userId: number; exp: number }>();
   const failures = new Map<string, { n: number; until: number }>();
@@ -454,7 +460,7 @@ export function createWeb(store: Store, opts: { onSmtpSettingsChanged?: () => Pr
     return { ok: true };
   });
 
-  app.post("/api/login", async (req, reply) => {
+  app.post("/api/login", { config: { rateLimit: { max: 20, timeWindow: "1 minute" } } }, async (req, reply) => {
     if (!localLoginEnabled()) return reply.code(403).send({ error: "password login is disabled, use single sign-on" });
     const ip = req.ip;
     const f = failures.get(ip);
@@ -669,7 +675,7 @@ export function createWeb(store: Store, opts: { onSmtpSettingsChanged?: () => Pr
     if (!b.name) return "name is required";
     if (!b.matchType || !types.includes(b.matchType)) return "matchType must be recipient, sender, subject or catchall";
     if (b.matchType !== "catchall" && !b.pattern) return "pattern is required";
-    if (b.matchType === "sender" || b.matchType === "subject") { try { new RegExp(b.pattern!); } catch { return "pattern is not a valid regex"; } }
+    if (b.matchType === "sender" || b.matchType === "subject") { const err = patternError(b.pattern!); if (err) return `pattern is not a valid regex: ${err}`; }
     if (tt === "gotify" && !b.gotifyToken && !existing?.gotifyToken) return "gotifyToken is required";
     if (tt !== "gotify" && tt !== "none") { const e = validateTarget(tt, b.target ?? {}, mergeSecrets(b.secrets, existing?.secrets)); if (e) return e; }
     if (b.gotifyUrl && !/^https?:\/\//.test(b.gotifyUrl)) return "gotifyUrl must start with http:// or https://";
@@ -1226,5 +1232,6 @@ export function createWeb(store: Store, opts: { onSmtpSettingsChanged?: () => Pr
       return fs.readFileSync(path.join(publicDir, file));
     });
   }
-  return app;
+  });
+  return root;
 }
