@@ -19,7 +19,7 @@ jobs:
     steps:
       - name: Get a nerdy-intern token
         id: app
-        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
         with:
           app-id: ${{ secrets.NERDY_INTERN_APP_ID }}
           private-key: ${{ secrets.NERDY_INTERN_PRIVATE_KEY }}
@@ -51,7 +51,7 @@ jobs:
     steps:
       - name: Get a nerdy-intern token
         id: app
-        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
         with:
           app-id: ${{ secrets.NERDY_INTERN_APP_ID }}
           private-key: ${{ secrets.NERDY_INTERN_PRIVATE_KEY }}
@@ -72,13 +72,13 @@ jobs:
     steps:
       - name: Get a nerdy-intern token
         id: app
-        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
         with:
           app-id: ${{ secrets.NERDY_INTERN_APP_ID }}
           private-key: ${{ secrets.NERDY_INTERN_PRIVATE_KEY }}
           permission-pull-requests: write
           permission-contents: read
-      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+      - uses: actions/dependency-review-action@bbc44d14a204704ccc493733616cd1e93a0321ec # v5.0.1
         with:
           repo-token: ${{ steps.app.outputs.token }}
           base-ref: ${{ github.event.pull_request.base.sha }}
